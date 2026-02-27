@@ -1,0 +1,30 @@
+{
+  "episodes": 10,
+  "seed_base": 456,
+  "cfg_overrides": {
+    "scan_debug_oob": false
+  },
+  "success_count": 7,
+  "crash_count": 0,
+  "oob_touch_count": 0,
+  "oob_touch_rate": 0.0,
+  "oob_touch_episode_count": 0,
+  "oob_touch_episode_rate": 0.0,
+  "success_rate_mean": 0.699999988079071,
+  "success_rate_std": 0.4582575559616089,
+  "steps_mean": 1092.199951171875,
+  "steps_std": 870.6050415039062,
+  "mean_steps_success": 531.7142944335938,
+  "std_steps_success": 188.79295349121094,
+  "crash_rate_mean": 0.0,
+  "crash_rate_std": 0.0,
+  "yaw_rate_abs_mean": 0.2299775630235672,
+  "yaw_rate_abs_p95": 0.5954898595809937,
+  "dv_xy_mean": 0.2263660877943039,
+  "coverage_mean": 0.847000002861023,
+  "coverage_min": 0.6600000262260437,
+  "overlap_mean": 14.023141860961914,
+  "time_to_95_mean": 1957.800048828125,
+  "covered_cells_mean": 74.5,
+  "total_cells_mean": 89.80000305175781
+}

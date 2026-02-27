@@ -1,0 +1,43 @@
+{
+  "verify": {
+    "ok": true,
+    "model_path": "runs/production_scan/best_model.zip",
+    "preset": "A2",
+    "task": "scan",
+    "episodes": 1,
+    "success_count": 0,
+    "crash_count": 0,
+    "coverage_mean": 0.6600000262260437,
+    "json": "runs\\production_scan\\metrics\\verify_20260227T061014Z.json"
+  },
+  "eval_summary": {
+    "episodes": 1,
+    "seed_base": 456,
+    "cfg_overrides": {
+      "scan_debug_oob": false
+    },
+    "success_count": 0,
+    "crash_count": 0,
+    "oob_touch_count": 0,
+    "oob_touch_rate": 0.0,
+    "oob_touch_episode_count": 0,
+    "oob_touch_episode_rate": 0.0,
+    "success_rate_mean": 0.0,
+    "success_rate_std": 0.0,
+    "steps_mean": 2400.0,
+    "steps_std": 0.0,
+    "mean_steps_success": 0.0,
+    "std_steps_success": 0.0,
+    "crash_rate_mean": 0.0,
+    "crash_rate_std": 0.0,
+    "yaw_rate_abs_mean": 0.1908019483089447,
+    "yaw_rate_abs_p95": 0.3850802183151245,
+    "dv_xy_mean": 0.23673810064792633,
+    "coverage_mean": 0.6600000262260437,
+    "coverage_min": 0.6600000262260437,
+    "overlap_mean": 35.40909194946289,
+    "time_to_95_mean": 2401.0,
+    "covered_cells_mean": 66.0,
+    "total_cells_mean": 100.0
+  }
+}

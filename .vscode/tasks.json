@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Eval Sequence Gate (A2)",
+      "type": "shell",
+      "command": "\"D:\\drone_thesis_clean\\.venv\\Scripts\\python.exe\" -m scripts.eval --model \"runs\\sequence_a2_v9_oobtouch\\best_model.zip\" --task sequence --preset A2 --episodes 200 --seed 456 --device cpu",
+      "options": {
+        "cwd": "D:\\drone_thesis_clean"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Eval Scan Gate (A2)",
+      "type": "shell",
+      "command": "\"D:\\drone_thesis_clean\\.venv\\Scripts\\python.exe\" -m scripts.eval --model \"runs\\scan_v14_turnsmooth\\best_model.zip\" --task scan --preset A2 --episodes 50 --seed 456 --device cpu",
+      "options": {
+        "cwd": "D:\\drone_thesis_clean"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Play Sequence (A2)",
+      "type": "shell",
+      "command": "\"D:\\drone_thesis_clean\\.venv\\Scripts\\python.exe\" -m scripts.play --model \"runs\\sequence_a2_v9_oobtouch\\best_model.zip\" --task sequence --preset A2 --device cpu",
+      "options": {
+        "cwd": "D:\\drone_thesis_clean"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Play Scan (A2)",
+      "type": "shell",
+      "command": "\"D:\\drone_thesis_clean\\.venv\\Scripts\\python.exe\" -m scripts.play --model \"runs\\scan_v14_turnsmooth\\best_model.zip\" --task scan --preset A2 --device cpu",
+      "options": {
+        "cwd": "D:\\drone_thesis_clean"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

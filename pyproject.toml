@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quad-rl-curriculum"
+version = "0.1.0"
+description = "Curriculum RL for autonomous quadrotor flight in a 15D simulation environment."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "stable-baselines3==2.3.2",
+  "gymnasium==0.29.1",
+  "numpy>=1.26",
+  "torch>=2.1",
+  "tqdm",
+  "rich",
+  "tensorboard",
+  "pyyaml",
+  "pymavlink>=2.4.41",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["quad_rl*"]

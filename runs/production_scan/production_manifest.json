@@ -1,0 +1,78 @@
+﻿{
+    "model_path":  "runs/production_scan/best_model.zip",
+    "source_model_path":  "runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\best_model.zip",
+    "preset_name":  "A2",
+    "preset_source_run":  "A2_ABL_B125_T85",
+    "key_scan_knobs":  {
+                           "scan_k_cov_gain":  0.012,
+                           "scan_cov_late_thresh":  0.85,
+                           "scan_k_cov_gain_late":  0.01,
+                           "scan_k_cov_stall":  0,
+                           "scan_oob_grace_steps":  3,
+                           "scan_max_steps":  2400
+                       },
+    "training":  {
+                     "finetune_steps":  300000,
+                     "n_steps":  4096,
+                     "learning_rate":  5E-05,
+                     "ent_coef":  0,
+                     "train_seed":  123,
+                     "load_model":  "runs\\scan_prod_v35_best_by_gate\\best_model.zip",
+                     "cfg_overrides":  {
+                                           "scan_cov_late_thresh":  0.85,
+                                           "scan_k_cov_gain_late":  0.01,
+                                           "scan_k_cov_stall":  0.0,
+                                           "scan_oob_grace_steps":  3,
+                                           "scan_k_cov_gain":  0.012,
+                                           "scan_debug_oob":  false
+                                       }
+                 },
+    "gate_metrics":  {
+                         "seed456":  {
+                                         "episodes":  100,
+                                         "success_count":  70,
+                                         "crash_count":  0,
+                                         "coverage_mean":  0.870063304901123,
+                                         "coverage_min":  0.6600000262260437,
+                                         "overlap_mean":  14.329771995544434,
+                                         "time_to_95_mean":  1901.1600341796875
+                                     },
+                         "robust_s123":  {
+                                             "seeds":  [
+                                                           1,
+                                                           2,
+                                                           3
+                                                       ],
+                                             "episodes_per_seed":  100,
+                                             "mean_success":  74,
+                                             "min_success":  74,
+                                             "mean_coverage":  0.87804559866587317,
+                                             "min_coverage":  0.87791228294372559,
+                                             "crash_sum":  0
+                                         },
+                         "lawnmower_feasibility":  {
+                                                       "episodes":  100,
+                                                       "is_95_feasible_geom":  true,
+                                                       "is_95_feasible_time_limited":  true,
+                                                       "time_limited_coverage_mean":  1,
+                                                       "required_steps_feasible_rate":  1
+                                                   }
+                     },
+    "metrics_files":  {
+                          "robust_summary_s123":  "runs/production_scan/metrics/robust_summary_s123.json",
+                          "sweep_gate_results":  "runs/production_scan/metrics/sweep_gate_results.json",
+                          "lawnmower_feasibility":  "runs/production_scan/metrics/lawnmower_feasibility_seed456_e100.json",
+                          "gate_seed456":  "runs/production_scan/metrics/gate_seed456_100eps.json"
+                      },
+    "seed_info":  {
+                      "train_seed":  123,
+                      "gate_seed_456":  456,
+                      "robust_seeds":  [
+                                           1,
+                                           2,
+                                           3
+                                       ]
+                  },
+    "git_commit_hash":  "UNAVAILABLE_NO_HEAD",
+    "date_utc":  "2026-02-27T05:41:45.2800999Z"
+}

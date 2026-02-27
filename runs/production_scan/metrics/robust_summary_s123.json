@@ -1,0 +1,49 @@
+﻿{
+    "model":  "runs/scan_v37_short_sweeps_from_v35/gain_0p012/best_model.zip",
+    "preset":  "A2_ABL_B125_T85",
+    "overrides":  {
+                      "scan_cov_late_thresh":  0.85,
+                      "scan_debug_oob":  false,
+                      "scan_k_cov_stall":  0,
+                      "scan_k_cov_gain":  0.012,
+                      "scan_k_cov_gain_late":  0.01,
+                      "scan_oob_grace_steps":  3
+                  },
+    "seeds":  [
+                  {
+                      "seed":  1,
+                      "episodes":  100,
+                      "success_count":  74,
+                      "crash_count":  0,
+                      "coverage_mean":  0.87831223011016846,
+                      "coverage_min":  0.68000000715255737,
+                      "steps_mean":  1052.22998046875,
+                      "file":  "D:\\drone_thesis_clean\\runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\gates\\robust_s1.json"
+                  },
+                  {
+                      "seed":  2,
+                      "episodes":  100,
+                      "success_count":  74,
+                      "crash_count":  0,
+                      "coverage_mean":  0.87791228294372559,
+                      "coverage_min":  0.68000000715255737,
+                      "steps_mean":  1053.97998046875,
+                      "file":  "D:\\drone_thesis_clean\\runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\gates\\robust_s2.json"
+                  },
+                  {
+                      "seed":  3,
+                      "episodes":  100,
+                      "success_count":  74,
+                      "crash_count":  0,
+                      "coverage_mean":  0.87791228294372559,
+                      "coverage_min":  0.68000000715255737,
+                      "steps_mean":  1057.4200439453125,
+                      "file":  "D:\\drone_thesis_clean\\runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\gates\\robust_s3.json"
+                  }
+              ],
+    "mean_success":  74,
+    "min_success":  74,
+    "mean_coverage":  0.87804559866587317,
+    "min_coverage":  0.87791228294372559,
+    "crash_sum":  0
+}

@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Large experiment artifacts; keep only promoted production scan bundle.
+runs/**
+!runs/production_scan/
+!runs/production_scan/**

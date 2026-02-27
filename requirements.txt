@@ -1,0 +1,9 @@
+stable-baselines3==2.3.2
+gymnasium==0.29.1
+numpy>=1.26
+torch>=2.1
+tqdm
+rich
+tensorboard
+pyyaml
+pymavlink>=2.4.41

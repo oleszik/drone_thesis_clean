@@ -1,0 +1,182 @@
+[
+  {
+    "candidate": "baseline_nofinetune",
+    "model": "runs\\scan_prod_v35_best_by_gate\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\baseline_nofinetune\\gates\\baseline_nofinetune_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.0125,
+      "scan_debug_oob": false
+    },
+    "success_count": 69,
+    "crash_count": 0,
+    "coverage_mean": 0.8551551103591919,
+    "coverage_min": 0.6700000166893005,
+    "time_to_95_mean": 2026.1300048828125
+  },
+  {
+    "candidate": "gain_0p011",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p011\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p011\\gates\\gain_0p011_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.011,
+      "scan_debug_oob": false
+    },
+    "success_count": 63,
+    "crash_count": 0,
+    "coverage_mean": 0.8398346900939941,
+    "coverage_min": 0.6600000262260437,
+    "time_to_95_mean": 2055.3701171875
+  },
+  {
+    "candidate": "gain_0p012",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\gates\\gain_0p012_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.012,
+      "scan_debug_oob": false
+    },
+    "success_count": 70,
+    "crash_count": 0,
+    "coverage_mean": 0.870063304901123,
+    "coverage_min": 0.6600000262260437,
+    "time_to_95_mean": 1901.1600341796875
+  },
+  {
+    "candidate": "gain_0p013",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p013\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p013\\gates\\gain_0p013_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.013,
+      "scan_debug_oob": false
+    },
+    "success_count": 56,
+    "crash_count": 0,
+    "coverage_mean": 0.8357979655265808,
+    "coverage_min": 0.6700000166893005,
+    "time_to_95_mean": 2132.93994140625
+  },
+  {
+    "candidate": "gain_0p014",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p014\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p014\\gates\\gain_0p014_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.014,
+      "scan_debug_oob": false
+    },
+    "success_count": 58,
+    "crash_count": 0,
+    "coverage_mean": 0.8463979959487915,
+    "coverage_min": 0.6600000262260437,
+    "time_to_95_mean": 2062.010009765625
+  },
+  {
+    "candidate": "late_0p008",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\late_0p008\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\late_0p008\\gates\\late_0p008_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.008,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.0125,
+      "scan_debug_oob": false
+    },
+    "success_count": 54,
+    "crash_count": 0,
+    "coverage_mean": 0.8389367461204529,
+    "coverage_min": 0.6700000166893005,
+    "time_to_95_mean": 2196.97998046875
+  },
+  {
+    "candidate": "late_0p012",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\late_0p012\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\late_0p012\\gates\\late_0p012_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.012,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.0125,
+      "scan_debug_oob": false
+    },
+    "success_count": 61,
+    "crash_count": 0,
+    "coverage_mean": 0.834638774394989,
+    "coverage_min": 0.6600000262260437,
+    "time_to_95_mean": 2095.6298828125
+  },
+  {
+    "candidate": "grace_2",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\grace_2\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\grace_2\\gates\\grace_2_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 2,
+      "scan_k_cov_gain": 0.0125,
+      "scan_debug_oob": false
+    },
+    "success_count": 43,
+    "crash_count": 0,
+    "coverage_mean": 0.8102020025253296,
+    "coverage_min": 0.47999998927116394,
+    "time_to_95_mean": 2046.8399658203125
+  },
+  {
+    "candidate": "grace_3",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\grace_3\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\grace_3\\gates\\grace_3_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.0125,
+      "scan_debug_oob": false
+    },
+    "success_count": 43,
+    "crash_count": 0,
+    "coverage_mean": 0.8102020025253296,
+    "coverage_min": 0.47999998927116394,
+    "time_to_95_mean": 2046.8399658203125
+  },
+  {
+    "candidate": "grace_4",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\grace_4\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\grace_4\\gates\\grace_4_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 4,
+      "scan_k_cov_gain": 0.0125,
+      "scan_debug_oob": false
+    },
+    "success_count": 43,
+    "crash_count": 0,
+    "coverage_mean": 0.8102020025253296,
+    "coverage_min": 0.47999998927116394,
+    "time_to_95_mean": 2046.8399658203125
+  }
+]
