@@ -4,6 +4,72 @@ This repository implements:
 
 Curriculum-Based Reinforcement Learning for Autonomous Quadrotor Flight Control in a 15-Dimensional Simulation Environment.
 
+## Quick Start
+
+1. Clone repo
+
+```bash
+git clone https://github.com/oleszik/drone_thesis_clean
+cd drone_thesis_clean
+```
+
+2. Install Python dependencies
+
+```bash
+pip install -r requirements.txt
+pip install -r backend/requirements.txt
+```
+
+3. Start backend
+
+```bash
+uvicorn backend.app.main:app --reload --port 8000
+```
+
+4. Start dashboard (new terminal)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+5. Run SITL bridge repeat-eval example
+
+```bash
+python -m scripts.bridge_repeat_eval --dry-run 1 --runs 3 --model runs/production_scan_v4_scale2/best_model.zip --task scan --preset A2 --scale 2.0 --bounds 40 40 --alt 10
+```
+
+## System Architecture
+
+```mermaid
+flowchart TD
+    A[RL Policy<br/>quad_rl + best_model.zip] --> B[Bridge Scripts<br/>scripts/ardupilot_bridge.py]
+    B -->|MAVLink setpoints| C[ArduPilot SITL]
+    C -->|Telemetry| D[Backend<br/>FastAPI + MAVLink services]
+    D -->|REST API| E[Frontend Dashboard<br/>React + Vite]
+```
+
+## Reproducing Thesis Experiments
+
+Baseline coverage evaluation (scan gate style in simulation):
+
+```bash
+python -m scripts.eval --model auto --task scan --preset A2 --episodes 100 --seed 456 --device cpu --json-out runs/production_scan/metrics/gate_seed456_100eps_repro.json
+```
+
+Speed sweep experiment (bridge):
+
+```bash
+python -m scripts.bridge_speed_sweep --model runs/production_scan_v4_scale2/best_model.zip --task scan --preset A2 --scale 2.0 --conn udp:127.0.0.1:14550 --bounds 40 40 --duration-s 120 --dry-run 1
+```
+
+SITL gate experiment (single run):
+
+```bash
+python -m scripts.ardupilot_scan_gate --model runs/production_scan_v4_scale2/best_model.zip --preset A2 --scan-path-len-scale 2.0 --bounds-m 40 40 --duration-s 120 --dry-run 1
+```
+
 ## Observation and Action Spaces
 
 Observation is always 15D, for all tasks:
@@ -16,7 +82,7 @@ Action is always 4D, for all tasks:
 
 Env action space is normalized `Box(-1,1,4)`; physical scaling is preset-driven.
 
-## Quickstart (Windows)
+## Quickstart (Windows, Detailed)
 
 Create venv + install deps:
 
