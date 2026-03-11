@@ -11,6 +11,7 @@ from quad_rl.curriculum.presets import get_preset, list_presets
 from quad_rl.envs.quad15d_env import Quad15DEnv
 from quad_rl.tasks import build_task
 from quad_rl.utils.config_overrides import apply_overrides, parse_override_pairs
+from quad_rl.utils.scan_scale_profile import effective_scan_max_steps
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,7 +152,7 @@ def main() -> None:
     cfg = get_preset(args.preset)
     cfg_overrides = parse_override_pairs(args.cfg_override)
     applied_overrides = apply_overrides(cfg, cfg_overrides) if cfg_overrides else {}
-    scan_max_steps = int(getattr(cfg, "scan_max_steps", cfg.max_steps))
+    scan_max_steps = int(effective_scan_max_steps(cfg))
     scan_v_xy_max = getattr(cfg, "scan_v_xy_max", None)
     if scan_v_xy_max is None:
         scan_v_xy_max = cfg.v_xy_max

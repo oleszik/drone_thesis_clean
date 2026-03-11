@@ -13,6 +13,15 @@ def _parse_bool(text: str) -> bool:
 
 
 def _coerce_from_value(raw: str, current: Any) -> Any:
+    if isinstance(current, tuple):
+        token = raw.strip()
+        parts = [p.strip() for p in token.split(",") if p.strip()]
+        if len(parts) == len(current):
+            out = []
+            for i, part in enumerate(parts):
+                out.append(_coerce_from_value(part, current[i]))
+            return tuple(out)
+        return token
     if isinstance(current, bool):
         return _parse_bool(raw)
     if isinstance(current, int) and not isinstance(current, bool):

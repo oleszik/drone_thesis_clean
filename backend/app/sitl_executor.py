@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+import math
+import threading
+import time
+from typing import Any
+
+from .mavlink_service import MavlinkService
+from .mission_service import MissionService
+
+
+def _distance_m(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
+    d_lat = (float(lat2) - float(lat1)) * 111320.0
+    c = math.cos(math.radians((float(lat1) + float(lat2)) * 0.5))
+    d_lng = (float(lng2) - float(lng1)) * 111320.0 * max(0.1, abs(c))
+    return math.hypot(d_lng, d_lat)
+
+
+class SitlExecutor:
+    STATES = {"IDLE", "ARMING", "TAKEOFF", "RUN_PATH", "COMPLETE", "STOPPED", "ERROR"}
+    MAX_START_DISTANCE_M = 5000.0
+
+    def __init__(self, mav: MavlinkService, mission: MissionService) -> None:
+        self._mav = mav
+        self._mission = mission
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._stop_evt = threading.Event()
+
+        self._state = "IDLE"
+        self._scan_active = False
+        self._last_error = ""
+        self._alt_m = 10.0
+        self._accept_radius_m = 3.0
+        self._waypoints: list[list[float]] = []
+        self._wp_idx = 0
+
+    def _set_state(self, state: str) -> None:
+        if state not in self.STATES:
+            state = "ERROR"
+        self._state = state
+
+    def _wait_until(self, pred, timeout_s: float, step_s: float = 0.2) -> bool:
+        t0 = time.monotonic()
+        while not self._stop_evt.is_set():
+            if pred():
+                return True
+            if (time.monotonic() - t0) >= timeout_s:
+                return False
+            time.sleep(step_s)
+        return False
+
+    def start_scan(self, alt_m: float, accept_radius_m: float) -> dict[str, Any]:
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                raise ValueError("scan executor already running")
+            if not bool(self._mav.get_status().get("connected")):
+                raise ValueError("MAVLink not connected")
+            payload = self._mission.get_path()
+            waypoints = payload.get("waypoints_lng_lat") or []
+            if len(waypoints) < 2:
+                raise ValueError("no generated scan path")
+            tele = self._mav.get_telemetry()
+            cur_lng = tele.get("lon")
+            cur_lat = tele.get("lat")
+            if cur_lng is not None and cur_lat is not None:
+                start_lng = float(waypoints[0][0])
+                start_lat = float(waypoints[0][1])
+                d0 = _distance_m(float(cur_lng), float(cur_lat), start_lng, start_lat)
+                if d0 > self.MAX_START_DISTANCE_M:
+                    raise ValueError(
+                        f"vehicle too far from mission start ({d0:.0f} m). "
+                        "Restart SITL with --custom-location near your scan area."
+                    )
+            self._waypoints = [list(w) for w in waypoints]
+            self._alt_m = max(1.0, float(alt_m))
+            self._accept_radius_m = max(0.5, float(accept_radius_m))
+            self._last_error = ""
+            self._wp_idx = 1
+            self._scan_active = True
+            self._set_state("ARMING")
+            self._stop_evt.clear()
+            self._thread = threading.Thread(target=self._run, name="sitl-executor", daemon=True)
+            self._thread.start()
+        return self.get_state()
+
+    def stop_scan(self) -> dict[str, Any]:
+        with self._lock:
+            self._stop_evt.set()
+        try:
+            self._mav.rtl()
+        except Exception:
+            try:
+                self._mav.land()
+            except Exception:
+                pass
+        with self._lock:
+            self._scan_active = False
+            self._set_state("STOPPED")
+        return self.get_state()
+
+    def is_scan_active(self) -> bool:
+        with self._lock:
+            return bool(self._scan_active and self._state == "RUN_PATH")
+
+    def get_state(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "state": self._state,
+                "scan_active": bool(self._scan_active),
+                "waypoint_index": int(self._wp_idx),
+                "waypoint_count": int(len(self._waypoints)),
+                "alt_m": float(self._alt_m),
+                "accept_radius_m": float(self._accept_radius_m),
+                "last_error": self._last_error,
+            }
+
+    def _run(self) -> None:
+        try:
+            self._mav.set_mode("GUIDED")
+            self._mav.arm()
+            if not self._wait_until(lambda: bool(self._mav.get_status().get("armed")), timeout_s=20.0):
+                raise RuntimeError("arming timeout")
+
+            with self._lock:
+                self._set_state("TAKEOFF")
+
+            self._mav.takeoff(self._alt_m)
+            if not self._wait_until(
+                lambda: (self._mav.get_telemetry().get("rel_alt_m") or 0.0) >= (self._alt_m - 0.7),
+                timeout_s=60.0,
+            ):
+                raise RuntimeError("takeoff timeout")
+
+            with self._lock:
+                self._set_state("RUN_PATH")
+
+            rate_hz = 5.0
+            dt = 1.0 / rate_hz
+            while not self._stop_evt.is_set():
+                with self._lock:
+                    if self._wp_idx >= len(self._waypoints):
+                        break
+                    tgt = self._waypoints[self._wp_idx]
+                    accept_r = self._accept_radius_m
+                    alt = self._alt_m
+
+                lng_t, lat_t = float(tgt[0]), float(tgt[1])
+                self._mav.goto_location(lng=lng_t, lat=lat_t, alt_rel_m=alt)
+
+                tele = self._mav.get_telemetry()
+                lng = tele.get("lon")
+                lat = tele.get("lat")
+                if lng is not None and lat is not None:
+                    d = _distance_m(float(lng), float(lat), lng_t, lat_t)
+                    if d <= accept_r:
+                        with self._lock:
+                            self._wp_idx += 1
+                time.sleep(dt)
+
+            if not self._stop_evt.is_set():
+                with self._lock:
+                    self._set_state("COMPLETE")
+                    self._scan_active = False
+                try:
+                    self._mav.land()
+                except Exception:
+                    try:
+                        self._mav.rtl()
+                    except Exception:
+                        pass
+            else:
+                with self._lock:
+                    self._scan_active = False
+                    self._set_state("STOPPED")
+        except Exception as exc:
+            with self._lock:
+                self._last_error = str(exc)
+                self._scan_active = False
+                self._set_state("ERROR")
+            try:
+                self._mav.rtl()
+            except Exception:
+                pass

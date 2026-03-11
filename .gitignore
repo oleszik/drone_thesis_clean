@@ -1,9 +1,22 @@
 .venv/
+.venv-*/
+.venv_*/
+.venv*/
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+.env
+.env.local
+certs/*.pem
+node_modules/
+dist/
 
 # Large experiment artifacts; keep only promoted production scan bundle.
 runs/**
 !runs/production_scan/
 !runs/production_scan/**
+
+# Local map datasets are large and should be fetched separately.
+data/maps/*.mbtiles
+data/maps/*.osm.pbf

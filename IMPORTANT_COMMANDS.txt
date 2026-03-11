@@ -1,0 +1,171 @@
+Drone Thesis - Important Commands
+===============================
+
+Repo
+----
+cd /mnt/data/drone_thesis_clean
+
+Python env (Linux)
+------------------
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+Python env (Windows PowerShell)
+-------------------------------
+cd D:\drone_thesis_clean
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+Install QGroundControl (Windows, via GitHub CLI)
+-------------------------------------------------
+gh auth login
+gh auth status
+gh release download --repo mavlink/qgroundcontrol --pattern "QGroundControl-installer.exe" --latest
+.\QGroundControl-installer.exe
+
+Open QGroundControl (Windows)
+-----------------------------
+# Option A: if installed in default location
+start "" "C:\Program Files\QGroundControl\QGroundControl.exe"
+
+# Option B: from Start menu shortcut (PowerShell)
+Start-Process "QGroundControl"
+
+ArduPilot SITL setup (Linux/WSL, one-time)
+-------------------------------------------
+sudo apt update
+sudo apt install -y git python3 python3-pip python3-venv
+git clone https://github.com/ArduPilot/ardupilot.git
+cd ardupilot
+git submodule update --init --recursive
+Tools/environment_install/install-prereqs-ubuntu.sh -y
+. ~/.profile
+
+Start ArduPilot SITL (Linux/WSL, both ports in one command)
+-----------------------------------------------------------
+cd ~/ardupilot
+Tools/autotest/sim_vehicle.py -v ArduCopter --console --map \
+  --custom-location=32.204407,118.718885,0,0 \
+  --out=udp:127.0.0.1:14550 \
+  --out=udp:127.0.0.1:14551
+
+Run bridge (real SITL)
+----------------------
+cd /mnt/data/drone_thesis_clean
+source .venv/bin/activate
+python -m scripts.ardupilot_bridge \
+  --dry-run 0 \
+  --model auto \
+  --task scan \
+  --preset A2 \
+  --scan-path-len-scale 2.0 \
+  --bounds-m 40 40 \
+  --alt-m 10 \
+  --connection udpin:0.0.0.0:14551
+
+Run gate (single score)
+-----------------------
+python -m scripts.ardupilot_scan_gate \
+  --dry-run 0 \
+  --conn udpin:0.0.0.0:14551 \
+  --model auto \
+  --preset A2 \
+  --scan-path-len-scale 2.0 \
+  --bounds-m 40 40 \
+  --alt-m 10 \
+  --duration-s 180
+
+Run speed sweep (after bridge_speed_sweep exists)
+--------------------------------------------------
+python -m scripts.bridge_speed_sweep --scale 2.0 --conn udpin:0.0.0.0:14551 --bounds 40 40 --alt 10
+
+Dry-run sanity checks
+---------------------
+python -m scripts.ardupilot_bridge --dry-run 1 --model auto --task scan --preset A2 --scan-path-len-scale 2.0 --steps 50 --rate-hz 5.0
+python -m scripts.ardupilot_scan_gate --dry-run 1 --duration-s 30 --conn udp:127.0.0.1:14550 --model auto --preset A2 --scan-path-len-scale 2.0
+
+Quick troubleshooting
+---------------------
+# Check UDP port listener (Linux)
+ss -lunp | rg 14550 || true
+ss -lunp | rg 14551 || true
+
+# Restart SITL quickly (both ports)
+pkill -f "sim_vehicle.py -v ArduCopter" || true
+sleep 2
+cd ~/ardupilot
+Tools/autotest/sim_vehicle.py -v ArduCopter --console --map \
+  --custom-location=32.204407,118.718885,0,0 \
+  --out=udp:127.0.0.1:14550 \
+  --out=udp:127.0.0.1:14551
+
+# Hard reset SITL state (both ports)
+cd ~/ardupilot
+Tools/autotest/sim_vehicle.py -w -v ArduCopter --console --map \
+  --custom-location=32.204407,118.718885,0,0 \
+  --out=udp:127.0.0.1:14550 \
+  --out=udp:127.0.0.1:14551
+
+Website (Current: React + FastAPI + Tencent map via backend tile proxy)
+------------------------------------------------------------------------
+# Backend env (one-time)
+cd /mnt/data/drone_thesis_clean
+python3 -m venv .venv-web
+source .venv-web/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+
+# Backend .env (one-time; used by backend/app/config.py)
+cat > .env <<'EOF'
+MAP_PROVIDER=tencent
+TENCENT_MAP_KEY=YOUR_TENCENT_KEY
+MAVLINK_URL=udpin:0.0.0.0:14551
+EOF
+
+# Frontend deps (one-time)
+cd /mnt/data/drone_thesis_clean/frontend
+npm install
+
+# Frontend .env.local (one-time; used by Vite)
+cat > .env.local <<'EOF'
+VITE_BACKEND_BASE=http://127.0.0.1:8000
+EOF
+
+# Backend run
+cd /mnt/data/drone_thesis_clean
+source .venv-web/bin/activate
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Frontend (Vite + React) in second terminal
+cd /mnt/data/drone_thesis_clean/frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+
+# Open in browser
+# http://127.0.0.1:5173
+
+# API quick checks
+curl -s http://127.0.0.1:8000/api/health | jq
+curl -s http://127.0.0.1:8000/api/status | jq
+curl -s http://127.0.0.1:8000/api/telemetry | jq
+curl -s http://127.0.0.1:8000/api/sitl/state | jq
+
+# Tencent map quick verify
+curl -s http://127.0.0.1:8000/api/health | jq '.map_provider,.tencent_key_configured'
+curl -s "http://127.0.0.1:8000/api/map/tile/16/53960/24832.png" -o /tmp/tencent_tile.png
+
+Legacy note
+-----------
+# scripts/ui_https_dashboard.py is not present in this repo anymore.
+# Use the React + FastAPI website commands above.
+
+# Optional scan-origin controls for bridge:
+# - Center area on current drone position:
+#   --scan-origin-mode drone --scan-origin-ref center --anchor-origin 1
+# - Put drone at SW corner of scanable area:
+#   --scan-origin-mode drone --scan-origin-ref sw --anchor-origin 1
+# - Fixed area center at LOCAL_NED (0,0):
+#   --scan-origin-mode fixed --scan-origin-ref center --scan-origin-x 0 --scan-origin-y 0 --anchor-origin 0

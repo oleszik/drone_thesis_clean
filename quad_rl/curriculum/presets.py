@@ -96,6 +96,9 @@ class PresetConfig:
     scan_path_len_scale: float = 1.0
     scan_path_len_scale_min: float = 1.0
     scan_path_len_scale_max: float = 1.0
+    scan_scale_max_steps_with_path: bool = False
+    scan_path_len_scale_ref: float = 1.0
+    scan_max_steps_scale_cap: float = 0.0
     scan_hold_turns_only: bool = False
     scan_turn_hold_steps: int = 3
     scan_turn_hold_radius: float = 0.8
@@ -116,8 +119,11 @@ class PresetConfig:
     scan_coverage_radius: float = 0.5
     scan_k_cov_gain: float = 0.0
     scan_k_cov_revisit: float = 0.0
+    scan_k_cov_gain_boundary: float = 0.0
     scan_k_yawrate: float = 0.0
     scan_k_dvxy: float = 0.0
+    scan_k_yawrate_pen: float = 0.0
+    scan_k_slip_pen: float = 0.0
     scan_z_min: float | None = None
     scan_z_max: float | None = None
     scan_z_cmd_min: float | None = None
@@ -128,6 +134,38 @@ class PresetConfig:
     scan_cov_late_thresh: float = 1.0
     scan_k_cov_gain_late: float = 0.0
     scan_k_cov_stall: float = 0.0
+    scan_cov_finish_thresh: float = 1.0
+    scan_k_cov_gain_finish: float = 0.0
+    scan_cov_finish2_thresh: float = 1.0
+    scan_k_cov_gain_finish2: float = 0.0
+    scan_k_time_late: float = 0.0
+    scan_k_teacher: float = 0.0
+    scan_teacher_sigma: float = 0.5
+    scan_obs_aug_enable: bool = False
+    scan_obs_patch_size: int = 5
+    scan_obs_boundary_feat: bool = True
+    scan_obs_global_coverage_enable: bool = False
+    scan_obs_global_size: int = 8
+    scan_speed_action_enable: bool = True
+    scan_k_cov: float = 10.0
+    scan_k_ov: float = 6.0
+    scan_k_t: float = 0.2
+    scan_k_speed: float = 0.6
+    scan_k_overshoot: float = 2.0
+    obs_meas_aug_enable: bool = False
+    obs_ekf_quality_enable: bool = False
+    obs_ekf_quality_default: float = 1.0
+    actuation_model_enable: bool = False
+    actuation_tau: float = 0.2
+    actuation_slew_time: float = 0.3
+    actuation_vxy_max: float = 1.0
+    actuation_vz_max: float = 0.5
+    actuation_yaw_rate_max: float = 0.7853981633974483
+    scan_finishcurr_enable: bool = False
+    scan_finishcurr_prob: float = 0.0
+    scan_finishcurr_cov_range: tuple[float, float] = (0.88, 0.92)
+    scan_finishcurr_pocket_frac: float = 0.08
+    scan_finishcurr_boundary_bias: float = 0.7
     scan_debug_oob: bool = False
 
     mission_takeoff_height: float = 1.0
@@ -240,6 +278,9 @@ PRESETS: Dict[str, PresetConfig] = {
         scan_path_len_scale=1.0,
         scan_path_len_scale_min=0.7,
         scan_path_len_scale_max=1.0,
+        scan_scale_max_steps_with_path=True,
+        scan_path_len_scale_ref=1.0,
+        scan_max_steps_scale_cap=3.0,
         scan_hold_turns_only=True,
         scan_turn_hold_steps=5,
         scan_turn_hold_radius=1.0,
@@ -328,6 +369,42 @@ PRESETS["A2_ABL_B125_T85"] = replace(
     PRESETS["A2_ABL_B125"],
     name="A2_ABL_B125_T85",
     scan_cov_late_thresh=0.85,
+)
+
+# Production-focused short finetune variants from A2 baseline.
+PRESETS["A2_FINISH"] = replace(
+    PRESETS["A2"],
+    name="A2_FINISH",
+    scan_cov_finish_thresh=0.93,
+    scan_k_cov_gain_finish=0.02,
+    scan_k_time_late=0.0,
+    scan_k_cov_stall=0.0,
+)
+PRESETS["A2_TIMELATE"] = replace(
+    PRESETS["A2"],
+    name="A2_TIMELATE",
+    scan_cov_finish_thresh=0.93,
+    scan_k_cov_gain_finish=0.0,
+    scan_k_time_late=1e-4,
+    scan_k_cov_stall=0.0,
+)
+PRESETS["A2_FINISH_TIMELATE"] = replace(
+    PRESETS["A2"],
+    name="A2_FINISH_TIMELATE",
+    scan_cov_finish_thresh=0.93,
+    scan_k_cov_gain_finish=0.02,
+    scan_k_time_late=1e-4,
+    scan_k_cov_stall=0.0,
+)
+PRESETS["A2_BOUNDARY"] = replace(
+    PRESETS["A2"],
+    name="A2_BOUNDARY",
+    scan_k_cov_gain_boundary=0.02,
+)
+PRESETS["A2_FINISH_TIMELATE_BOUNDARY"] = replace(
+    PRESETS["A2_FINISH_TIMELATE"],
+    name="A2_FINISH_TIMELATE_BOUNDARY",
+    scan_k_cov_gain_boundary=0.02,
 )
 
 

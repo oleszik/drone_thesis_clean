@@ -33,8 +33,19 @@ Syntax check:
 ## Current baselines
 
 - Sequence A2: `runs\sequence_a2_v9_oobtouch\best_model.zip`
-- Scan A2 production: `runs\production_scan\best_model.zip`
-- Scan config note: `allow_oob_touch_scan=False`, `scan_max_steps=2400`
+- Scan A2 production (`scale<2.0`): `runs\production_scan_v4\best_model.zip` (obs patch=5)
+- Scan A2 production (`scale>=2.0`): `runs\production_scan_v4_scale2\best_model.zip` (obs patch=7)
+- Scan config note: `allow_oob_touch_scan=False`; A2 enables scale-aware scan step budget via `scan_scale_max_steps_with_path=True`
+
+Scale-aware scan selection:
+
+- `--model auto` (scan task) chooses model/config by `max(scan_path_len_scale, scan_path_len_scale_min, scan_path_len_scale_max)`.
+- If upper scale `>=2.0`: selects patch-7 profile/model.
+- Else: selects patch-5 profile/model.
+- For A2, effective scan horizon is scaled as:
+  - `scan_max_steps_eff = round(scan_max_steps * max(1.0, path_scale_upper / scan_path_len_scale_ref))`
+  - capped by `scan_max_steps_scale_cap` when set (`A2` cap is `3.0`).
+- `patch5 + global8x8` is intentionally not selected by default (regressed in scale=2 controlled test); revisit later with `global4x4` and alignment checks.
 
 Eval sequence (200 eps gate):
 
@@ -45,7 +56,7 @@ Eval sequence (200 eps gate):
 Eval scan (50 eps gate):
 
 ```powershell
-"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.eval --model "runs\production_scan\best_model.zip" --task scan --preset A2 --episodes 50 --seed 456 --device cpu
+"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.eval --model auto --task scan --preset A2 --episodes 50 --seed 456 --device cpu
 ```
 
 Play (sequence):
@@ -57,7 +68,7 @@ Play (sequence):
 Play (scan):
 
 ```powershell
-"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.play --model "runs\production_scan\best_model.zip" --task scan --preset A2 --device cpu
+"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.play --model auto --task scan --preset A2 --device cpu
 ```
 
 Sanity gates:
@@ -85,13 +96,13 @@ Reproduce the winning finetune (from v35 baseline):
 Reproduce seed-456 gate (100 eps):
 
 ```powershell
-"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.eval --model "runs\production_scan\best_model.zip" --task scan --preset A2 --episodes 100 --seed 456 --device cpu --json-out "runs\production_scan\metrics\gate_seed456_100eps_repro.json"
+"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.eval --model auto --task scan --preset A2 --episodes 100 --seed 456 --device cpu --json-out "runs\production_scan\metrics\gate_seed456_100eps_repro.json"
 ```
 
 Reproduce 3-seed robust gates:
 
 ```powershell
-for %S in (1 2 3) do "D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.eval --model "runs\production_scan\best_model.zip" --task scan --preset A2 --episodes 100 --seed %S --device cpu --json-out "runs\production_scan\metrics\gate_seed_%S_100eps_repro.json"
+for %S in (1 2 3) do "D:\drone_thesis_clean\.venv\Scripts\python.exe" -m scripts.eval --model auto --task scan --preset A2 --episodes 100 --seed %S --device cpu --json-out "runs\production_scan\metrics\gate_seed_%S_100eps_repro.json"
 ```
 
 Reproduce lawnmower feasibility baseline:
@@ -137,23 +148,108 @@ Warm-start:
 
 ## ArduPilot Bridge
 
-Dry-run without SITL or model:
+Bridge tracking controls (LOCAL_NED):
+
+- `--target-refresh-mode {hold,always}`: default `hold` updates targets on accept-radius / hold-timeout / clamped-stall only.
+- `--use-vel-caps {0,1}` with `--vxy-cap`, `--vz-cap`: optionally sends position+velocity setpoints.
+- Corner handling: `--corner-angle-deg`, `--corner-slow-seconds`, `--corner-vxy-cap`.
+- By default the bridge applies SITL-recommended feature toggles; use `--sitl-recommended 0` to disable.
+- Local SITL reliability: with `--prefer-sitl-tcp 1` (default), if `--connection udp:127.0.0.1:14550` is requested, bridge probes `tcp:127.0.0.1:5760` for 1s and auto-switches to SITL master when heartbeat is present. Set `--prefer-sitl-tcp 0` to keep UDP behavior unchanged.
+- Preflight heartbeat/mode robustness:
+  - `--preflight-timeout-s` controls total preflight wait budget (default `30`).
+  - `--require-mode-known`: `0/1` (`-1` auto). Auto resolves to `0` when `--sitl-recommended 1`, else `1`.
+  - `--ekf-mode {auto,strict,wait,ignore}`. Auto resolves to `wait` with `--sitl-recommended 1`.
+
+Dry-run with scale-aware auto model/profile selection:
 
 ```bash
-python -m scripts.ardupilot_bridge --dry-run 1 --steps 50 --hz 10
+python -m scripts.ardupilot_bridge --dry-run 1 --model auto --task scan --preset A2 --scan-path-len-scale 2.0 --steps 50 --rate-hz 5.0
 ```
 
-With model and MAVLink:
+SITL/MAVLink example:
 
 ```bash
 python -m scripts.ardupilot_bridge \
   --dry-run 0 \
-  --model runs/sequence_a2_v9_oobtouch/best_model.zip \
-  --task sequence \
+  --model auto \
+  --task scan \
   --preset A2 \
+  --scan-path-len-scale 2.0 \
+  --bounds-m 40 40 \
+  --margin-m 2.0 \
   --connection udp:127.0.0.1:14550 \
-  --hz 10 \
+  --rate-hz 5.0 \
   --steps 300
+```
+
+ArduPilot SITL gate (single-run score + `gate_summary.json`):
+
+```bash
+python -m scripts.ardupilot_scan_gate \
+  --conn udp:127.0.0.1:14550 \
+  --model auto \
+  --preset A2 \
+  --scan-path-len-scale 2.0 \
+  --bounds-m 40 40 \
+  --alt-m 10 \
+  --duration-s 120 \
+  --dry-run 1
+```
+
+SITL Gate Suite (A/B + multi-run):
+
+Stability note: start with `--policy-hz 2.0` for ArduPilot target-stream smoothing.
+
+Dry-run suite:
+
+```bash
+python -m scripts.ardupilot_scan_gate_suite \
+  --dry-run 1 \
+  --duration-s 2 \
+  --model auto \
+  --preset A2 \
+  --scan-path-len-scale 2.0 \
+  --runs 2 \
+  --ab 1
+```
+
+Real SITL suite (adaptive A/B, 3 runs):
+
+```bash
+python -m scripts.ardupilot_scan_gate_suite \
+  --dry-run 0 \
+  --conn udp:127.0.0.1:14550 \
+  --model auto \
+  --preset A2 \
+  --scan-path-len-scale 2.0 \
+  --bounds-m 40 40 \
+  --duration-s 120 \
+  --runs 3 \
+  --ab 1
+```
+
+Key outputs:
+
+- Bridge telemetry/summary: `runs/ardupilot_scan/<timestamp>_<profile>/telemetry.jsonl`, `summary.json`
+- Gate result: `runs/ardupilot_scan_gate/<timestamp>/gate_summary.json` (or `--out`)
+- Suite result: `runs/ardupilot_scan_gate_suite/<timestamp>/suite_summary.json` with per-run `run_###/arm_*/gate_summary.json`
+
+Pin SITL recommended defaults:
+
+```bash
+python -m scripts.bless_ardupilot_defaults --scale-bucket scale2 --source latest
+```
+
+Use pinned defaults explicitly:
+
+```bash
+python -m scripts.ardupilot_bridge --sitl-recommended 1 --sitl-recommended-source path:runs/production_ardupilot_defaults/scale2_opt_summary.json --dry-run 1 --model auto --task scan --preset A2 --scan-path-len-scale 2.0 --steps 50
+```
+
+Example parameter sweep (scale2):
+
+```bash
+python -m scripts.ardupilot_param_sweep --scale-bucket scale2 --conn udp:127.0.0.1:14550 --model auto --preset A2 --scan-path-len-scale 2.0 --bounds-m 40 40 --duration-s 120 --runs 3 --grid "step=3,4,5;accept=0.75,1.0,1.25;vxy=1.0,1.2,1.5" --dry-run 0
 ```
 
 ## Tasks

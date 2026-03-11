@@ -10,7 +10,7 @@ from pathlib import Path
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Quick deterministic sanity check for production scan model.")
-    parser.add_argument("--model", type=str, default="runs/production_scan/best_model.zip")
+    parser.add_argument("--model", type=str, default="auto")
     parser.add_argument("--preset", type=str, default="A2")
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--seed", type=int, default=456)

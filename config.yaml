@@ -1,0 +1,24 @@
+backend:
+  host: 127.0.0.1
+  port: 8000
+  log_level: INFO
+
+mavlink:
+  url: udpin:0.0.0.0:14551
+  reconnect_sec: 1.0
+  heartbeat_timeout_sec: 5.0
+  default_takeoff_alt_m: 10.0
+
+frontend:
+  origin: http://127.0.0.1:5173
+
+maps:
+  provider: tencent
+  default_center_lng: 118.718885
+  default_center_lat: 32.204407
+  default_zoom: 16
+  bounds_w_m: 120.0
+  bounds_h_m: 120.0
+  track_max_points: 2000
+  coverage_cell_size_m: 5.0
+  coverage_footprint_radius_m: 6.0

@@ -1,0 +1,274 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: #0f172a;
+  background: linear-gradient(135deg, #e2e8f0 0%, #f8fafc 50%, #ecfeff 100%);
+}
+
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+h1 { margin: 0; }
+h2 { margin: 0 0 10px 0; font-size: 16px; }
+p { margin: 4px 0; }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.chip {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.status-row {
+  margin-top: 8px;
+  margin-bottom: 14px;
+}
+
+.run-panel {
+  margin-bottom: 12px;
+}
+
+.run-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.run-field input,
+.run-field textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.run-notes {
+  grid-column: 1 / span 2;
+}
+
+.run-actions {
+  grid-column: 1 / span 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.run-events {
+  grid-column: 1 / span 2;
+}
+
+.event-list {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 8px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.event-row {
+  font-size: 12px;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.ok { color: #166534; font-weight: 700; }
+.bad { color: #b91c1c; font-weight: 700; }
+.hint { color: #475569; font-size: 13px; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 320px;
+  gap: 12px;
+}
+
+.layout.collapsed {
+  grid-template-columns: 0 1fr 320px;
+}
+
+.layout.collapsed > .panel:first-child {
+  display: none;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+button {
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.small-btn {
+  width: auto;
+  margin: 0;
+  padding: 8px 10px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: #ffffff;
+}
+
+button.danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.map-panel { min-height: 560px; }
+
+.map-toolbar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.map-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-input input {
+  width: 90px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.mission-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.leaflet-map {
+  height: 520px;
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.metric {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.metric span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 16px;
+}
+
+.coverage-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  margin-bottom: 10px;
+}
+
+.coverage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.coverage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.coverage-grid span {
+  display: block;
+  color: #64748b;
+}
+
+.coverage-grid strong {
+  display: block;
+  font-size: 14px;
+}
+
+@media (max-width: 1200px) {
+  .layout { grid-template-columns: 260px 1fr; }
+  .layout.collapsed { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .layout.collapsed { grid-template-columns: 1fr; }
+}

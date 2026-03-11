@@ -13,6 +13,14 @@ from quad_rl.envs.quad15d_env import Quad15DEnv
 from quad_rl.tasks import build_task
 from quad_rl.utils.config_overrides import apply_overrides, parse_override_pairs
 from quad_rl.utils.paths import normalize_model_path
+from quad_rl.utils.scan_scale_profile import (
+    apply_scan_obs_profile,
+    assert_scan_obs_profile,
+    effective_scan_max_steps,
+    get_scan_path_scale_upper,
+    resolve_scan_production_model_path,
+    scan_step_scaling_details,
+)
 
 
 def _slug(text: str) -> str:
@@ -37,7 +45,7 @@ def _next_free_path(path: Path) -> Path:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate PPO model on Quad15DEnv.")
-    parser.add_argument("--model", type=str, required=True)
+    parser.add_argument("--model", type=str, default="auto")
     parser.add_argument("--episodes", type=int, default=50)
     parser.add_argument("--task", type=str, default="hover")
     parser.add_argument("--device", type=str, default="cpu")
@@ -59,8 +67,87 @@ def _max_steps_for_task(task_name: str, cfg) -> int:
     if key == "sequence":
         return int(cfg.seq_max_steps)
     if key == "scan":
-        return int(getattr(cfg, "scan_max_steps", cfg.max_steps))
+        return int(effective_scan_max_steps(cfg))
     return int(cfg.max_steps)
+
+
+def _resolve_model_path(model_arg: str, task_key: str, cfg) -> Path:
+    raw = (model_arg or "").strip()
+    lower = raw.lower()
+    auto_tokens = {"", "auto", "production", "production_scan"}
+    if task_key == "scan" and lower in auto_tokens:
+        model_path, profile = resolve_scan_production_model_path(cfg)
+        apply_scan_obs_profile(cfg, profile)
+        assert_scan_obs_profile(cfg, profile, ctx="eval:auto")
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"[eval] Auto-selected scan model does not exist: {model_path}. "
+                f"Checked profile '{profile.name}' candidates: {profile.model_candidates}"
+            )
+        print(
+            f"[eval] auto-scan profile={profile.name} path_scale_upper={get_scan_path_scale_upper(cfg):.3f} "
+            f"scan_max_steps_eff={effective_scan_max_steps(cfg)} model={model_path}"
+        )
+        return model_path
+    if lower in auto_tokens:
+        raise ValueError("[eval] --model is required for non-scan tasks.")
+    return Path(normalize_model_path(raw))
+
+
+def _load_model_preset_from_cfg(model_path: Path) -> dict | None:
+    cfg_path = model_path.parent / "cfg.json"
+    if not cfg_path.exists():
+        return None
+    try:
+        payload = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    preset = payload.get("preset")
+    return preset if isinstance(preset, dict) else None
+
+
+def _enforce_scan_obs_aug_compat(model_path: Path, cfg, task_name: str, ctx: str) -> None:
+    if (task_name or "").strip().lower() != "scan":
+        return
+    preset = _load_model_preset_from_cfg(model_path)
+    if not preset:
+        return
+    required_enable = bool(preset.get("scan_obs_aug_enable", False))
+    required_patch = int(preset.get("scan_obs_patch_size", 5))
+    required_boundary = bool(preset.get("scan_obs_boundary_feat", True))
+    required_global = bool(preset.get("scan_obs_global_coverage_enable", False))
+    required_global_size = int(preset.get("scan_obs_global_size", 8))
+    required_meas = bool(preset.get("obs_meas_aug_enable", False))
+    required_ekf = bool(preset.get("obs_ekf_quality_enable", False))
+    got_enable = bool(getattr(cfg, "scan_obs_aug_enable", False))
+    got_patch = int(getattr(cfg, "scan_obs_patch_size", 5))
+    got_boundary = bool(getattr(cfg, "scan_obs_boundary_feat", True))
+    got_global = bool(getattr(cfg, "scan_obs_global_coverage_enable", False))
+    got_global_size = int(getattr(cfg, "scan_obs_global_size", 8))
+    got_meas = bool(getattr(cfg, "obs_meas_aug_enable", False))
+    got_ekf = bool(getattr(cfg, "obs_ekf_quality_enable", False))
+    if not required_enable and not required_meas:
+        return
+    if (
+        (got_enable == required_enable)
+        and (got_patch == required_patch)
+        and (got_boundary == required_boundary)
+        and (got_global == required_global)
+        and (got_global_size == required_global_size)
+        and (got_meas == required_meas)
+        and (got_ekf == required_ekf)
+    ):
+        return
+    raise ValueError(
+        f"[{ctx}] Model requires scan obs augmentation from model cfg "
+        f"(enable={required_enable}, patch={required_patch}, boundary_feat={required_boundary}, "
+        f"global_cov={required_global}, global_size={required_global_size}, "
+        f"meas_aug={required_meas}, ekf_aug={required_ekf}) "
+        f"but runtime preset is (enable={got_enable}, patch={got_patch}, boundary_feat={got_boundary}, "
+        f"global_cov={got_global}, global_size={got_global_size}, "
+        f"meas_aug={got_meas}, ekf_aug={got_ekf}). "
+        "Set matching --cfg-override values."
+    )
 
 
 def main():
@@ -68,14 +155,15 @@ def main():
     cfg = get_preset(args.preset)
     cfg_overrides = parse_override_pairs(args.cfg_override)
     applied_overrides = apply_overrides(cfg, cfg_overrides) if cfg_overrides else {}
-    model_path = Path(normalize_model_path(args.model))
     task_key = args.task.strip().lower()
+    model_path = _resolve_model_path(args.model, task_key, cfg)
+    _enforce_scan_obs_aug_compat(model_path, cfg, task_key, ctx="eval")
 
     def make_env():
         task = build_task(args.task, cfg)
         max_steps = _max_steps_for_task(args.task, cfg)
         # Fresh env instance dedicated to evaluation (no training-env leakage).
-        return Quad15DEnv(task=task, cfg=cfg, max_steps=max_steps, seed=args.seed)
+        return Quad15DEnv(task=task, cfg=cfg, max_steps=max_steps, seed=args.seed, is_eval=True)
 
     env = DummyVecEnv([make_env])
     model = PPO.load(str(model_path), device=args.device)
@@ -99,7 +187,7 @@ def main():
     scan_total_cells_episode = []
     yaw_rate_abs_all = []
     dv_xy_all = []
-    scan_max_steps = int(getattr(cfg, "scan_max_steps", cfg.max_steps))
+    scan_max_steps_base, scan_path_len_scale, scan_max_steps, scan_max_steps_cap_hit = scan_step_scaling_details(cfg)
     scan_v_xy_max = getattr(cfg, "scan_v_xy_max", None)
     if scan_v_xy_max is None:
         scan_v_xy_max = cfg.v_xy_max
@@ -238,7 +326,8 @@ def main():
             print(
                 f"[eval] scan sanity ep={ep + 1} path_total_len={path_total_len:.3f} "
                 f"required_steps_min={required_steps:.1f} scan_max_steps={scan_max_steps} "
-                f"cant_succeed={int(impossible)}"
+                f"cant_succeed={int(impossible)} path_len_scale={scan_path_len_scale:.3f} "
+                f"scan_max_steps_base={scan_max_steps_base} cap_hit={int(scan_max_steps_cap_hit)}"
             )
             print(
                 f"[eval] scan last ep={ep + 1} seg_idx={dbg_seg_idx} n_segs={dbg_n_segs} "
@@ -323,18 +412,29 @@ def main():
         total_cells_arr = np.asarray(scan_total_cells_episode, dtype=np.float32)
         coverage_mean = float(np.mean(cov_arr)) if cov_arr.size else 0.0
         coverage_min = float(np.min(cov_arr)) if cov_arr.size else 0.0
+        coverage_ge_090_rate = float(np.mean(cov_arr >= 0.90)) if cov_arr.size else 0.0
+        coverage_ge_093_rate = float(np.mean(cov_arr >= 0.93)) if cov_arr.size else 0.0
+        coverage_ge_095_rate = float(np.mean(cov_arr >= 0.95)) if cov_arr.size else 0.0
         overlap_mean = float(np.mean(overlap_arr)) if overlap_arr.size else 0.0
         time_to_95_mean = float(np.mean(time95_arr)) if time95_arr.size else float(scan_max_steps + 1)
         covered_cells_mean = float(np.mean(covered_cells_arr)) if covered_cells_arr.size else 0.0
         total_cells_mean = float(np.mean(total_cells_arr)) if total_cells_arr.size else 0.0
         summary.update(
             {
+                "scan_max_steps_base": int(scan_max_steps_base),
+                "path_len_scale": float(scan_path_len_scale),
+                "scan_max_steps_eff": int(scan_max_steps),
+                "scan_max_steps_cap_hit": bool(scan_max_steps_cap_hit),
                 "coverage_mean": coverage_mean,
                 "coverage_min": coverage_min,
+                "coverage_ge_090_rate": coverage_ge_090_rate,
+                "coverage_ge_093_rate": coverage_ge_093_rate,
+                "coverage_ge_095_rate": coverage_ge_095_rate,
                 "overlap_mean": overlap_mean,
                 "time_to_95_mean": time_to_95_mean,
                 "covered_cells_mean": covered_cells_mean,
                 "total_cells_mean": total_cells_mean,
+                "coverage_episode": [float(x) for x in cov_arr.tolist()],
             }
         )
     print("[eval] summary:", json.dumps(summary, indent=2))
