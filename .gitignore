@@ -12,10 +12,16 @@ certs/*.pem
 node_modules/
 dist/
 
-# Large experiment artifacts; keep only promoted production scan bundle.
-runs/**
-!runs/production_scan/
-!runs/production_scan/**
+# Generated training artifacts under runs/ (keep summaries/metrics/configs).
+runs/**/*.zip
+runs/**/*.jsonl
+runs/**/*.log
+runs/**/tb/
+runs/**/sb3_logs/
+runs/**/checkpoints/
+runs/**/logs/
+runs/**/*stdout.txt
+runs/_tmp*/
 
 # Local map datasets are large and should be fetched separately.
 data/maps/*.mbtiles

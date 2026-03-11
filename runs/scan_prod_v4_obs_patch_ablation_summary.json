@@ -1,0 +1,285 @@
+﻿{
+    "experiment":  "scan_obs_patch_size_ablation",
+    "date_utc":  "2026-02-28T01:39:38.6726749Z",
+    "selection_primary_metric":  "coverage_ge_095_rate_mean_over_seeds",
+    "setup":  {
+                  "boundary_feat":  true,
+                  "patch_sizes":  [
+                                      3,
+                                      5,
+                                      7
+                                  ],
+                  "train_steps":  300000,
+                  "learning_rate":  5E-05,
+                  "ent_coef":  0,
+                  "warm_start_source":  "runs/production_scan_v3/best_model.zip"
+              },
+    "seed456_ranking":  [
+                            {
+                                "run":  "scan_prod_v4_obs_patch5_ft300k",
+                                "patch_size":  5,
+                                "obs_dim":  42,
+                                "train_steps":  300000,
+                                "learning_rate":  5E-05,
+                                "ent_coef":  0,
+                                "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                "seed456":  {
+                                                "success_count":  98,
+                                                "crash_count":  0,
+                                                "success_rate":  0.98000001907348644,
+                                                "coverage_mean":  0.97240608930587757,
+                                                "coverage_ge_095_rate":  0.86,
+                                                "steps_mean":  283.3699951171875
+                                            },
+                                "robustness":  {
+                                                   "per_seed":  [
+                                                                    {
+                                                                        "seed":  1,
+                                                                        "success_rate":  0.9700000286102296,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.97658979892730724,
+                                                                        "coverage_ge_095_rate":  0.87,
+                                                                        "steps_mean":  294.54000854492188
+                                                                    },
+                                                                    {
+                                                                        "seed":  2,
+                                                                        "success_rate":  0.9700000286102296,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.97648972272872925,
+                                                                        "coverage_ge_095_rate":  0.87,
+                                                                        "steps_mean":  294.66000366210938
+                                                                    },
+                                                                    {
+                                                                        "seed":  3,
+                                                                        "success_rate":  0.9700000286102296,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.97619384527206421,
+                                                                        "coverage_ge_095_rate":  0.87,
+                                                                        "steps_mean":  296.73001098632813
+                                                                    }
+                                                                ],
+                                                   "mean":  {
+                                                                "success_rate":  0.9700000286102296,
+                                                                "crash_count_sum":  0,
+                                                                "coverage_mean":  0.9764244556427002,
+                                                                "coverage_ge_095_rate":  0.87,
+                                                                "steps_mean":  295.31000773111981
+                                                            }
+                                               }
+                            },
+                            {
+                                "run":  "scan_prod_v4_obs_patch7_ft300k",
+                                "patch_size":  7,
+                                "obs_dim":  66,
+                                "train_steps":  300000,
+                                "learning_rate":  5E-05,
+                                "ent_coef":  0,
+                                "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                "seed456":  {
+                                                "success_count":  99,
+                                                "crash_count":  0,
+                                                "success_rate":  0.99000000953674316,
+                                                "coverage_mean":  0.96698778867721558,
+                                                "coverage_ge_095_rate":  0.86,
+                                                "steps_mean":  352.42001342773438
+                                            },
+                                "robustness":  {
+                                                   "per_seed":  [
+                                                                    {
+                                                                        "seed":  1,
+                                                                        "success_rate":  0.93000000715255737,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.965738832950592,
+                                                                        "coverage_ge_095_rate":  0.84,
+                                                                        "steps_mean":  494.08999633789063
+                                                                    },
+                                                                    {
+                                                                        "seed":  2,
+                                                                        "success_rate":  0.93000000715255737,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.96523880958557118,
+                                                                        "coverage_ge_095_rate":  0.83,
+                                                                        "steps_mean":  496.6099853515625
+                                                                    },
+                                                                    {
+                                                                        "seed":  3,
+                                                                        "success_rate":  0.93000000715255737,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.96494287252426159,
+                                                                        "coverage_ge_095_rate":  0.83,
+                                                                        "steps_mean":  496.6300048828125
+                                                                    }
+                                                                ],
+                                                   "mean":  {
+                                                                "success_rate":  0.93000000715255737,
+                                                                "crash_count_sum":  0,
+                                                                "coverage_mean":  0.965306838353475,
+                                                                "coverage_ge_095_rate":  0.83333333333333337,
+                                                                "steps_mean":  495.77666219075519
+                                                            }
+                                               }
+                            },
+                            {
+                                "run":  "scan_prod_v4_obs_patch3_ft300k",
+                                "patch_size":  3,
+                                "obs_dim":  26,
+                                "train_steps":  300000,
+                                "learning_rate":  5E-05,
+                                "ent_coef":  0,
+                                "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                "seed456":  {
+                                                "success_count":  28,
+                                                "crash_count":  0,
+                                                "success_rate":  0.2800000011920929,
+                                                "coverage_mean":  0.82438576221466064,
+                                                "coverage_ge_095_rate":  0.26,
+                                                "steps_mean":  2115.77001953125
+                                            },
+                                "robustness":  null
+                            }
+                        ],
+    "robust_evaluated_runs":  [
+                                  "scan_prod_v4_obs_patch5_ft300k",
+                                  "scan_prod_v4_obs_patch7_ft300k"
+                              ],
+    "winner_by_primary":  "scan_prod_v4_obs_patch5_ft300k",
+    "winner_metrics":  {
+                           "success_rate":  0.9700000286102296,
+                           "crash_count_sum":  0,
+                           "coverage_mean":  0.9764244556427002,
+                           "coverage_ge_095_rate":  0.87,
+                           "steps_mean":  295.31000773111981
+                       },
+    "keep_production_scan_v4":  "runs/production_scan_v4/best_model.zip",
+    "keep_reason":  "Primary metric selection among robust-evaluated top runs; production v4 remains canonical baseline (5x5).",
+    "candidates":  [
+                       {
+                           "run":  "scan_prod_v4_obs_patch3_ft300k",
+                           "patch_size":  3,
+                           "obs_dim":  26,
+                           "train_steps":  300000,
+                           "learning_rate":  5E-05,
+                           "ent_coef":  0,
+                           "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                           "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                           "seed456":  {
+                                           "success_count":  28,
+                                           "crash_count":  0,
+                                           "success_rate":  0.2800000011920929,
+                                           "coverage_mean":  0.82438576221466064,
+                                           "coverage_ge_095_rate":  0.26,
+                                           "steps_mean":  2115.77001953125
+                                       },
+                           "robustness":  null
+                       },
+                       {
+                           "run":  "scan_prod_v4_obs_patch5_ft300k",
+                           "patch_size":  5,
+                           "obs_dim":  42,
+                           "train_steps":  300000,
+                           "learning_rate":  5E-05,
+                           "ent_coef":  0,
+                           "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                           "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                           "seed456":  {
+                                           "success_count":  98,
+                                           "crash_count":  0,
+                                           "success_rate":  0.98000001907348644,
+                                           "coverage_mean":  0.97240608930587757,
+                                           "coverage_ge_095_rate":  0.86,
+                                           "steps_mean":  283.3699951171875
+                                       },
+                           "robustness":  {
+                                              "per_seed":  [
+                                                               {
+                                                                   "seed":  1,
+                                                                   "success_rate":  0.9700000286102296,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.97658979892730724,
+                                                                   "coverage_ge_095_rate":  0.87,
+                                                                   "steps_mean":  294.54000854492188
+                                                               },
+                                                               {
+                                                                   "seed":  2,
+                                                                   "success_rate":  0.9700000286102296,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.97648972272872925,
+                                                                   "coverage_ge_095_rate":  0.87,
+                                                                   "steps_mean":  294.66000366210938
+                                                               },
+                                                               {
+                                                                   "seed":  3,
+                                                                   "success_rate":  0.9700000286102296,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.97619384527206421,
+                                                                   "coverage_ge_095_rate":  0.87,
+                                                                   "steps_mean":  296.73001098632813
+                                                               }
+                                                           ],
+                                              "mean":  {
+                                                           "success_rate":  0.9700000286102296,
+                                                           "crash_count_sum":  0,
+                                                           "coverage_mean":  0.9764244556427002,
+                                                           "coverage_ge_095_rate":  0.87,
+                                                           "steps_mean":  295.31000773111981
+                                                       }
+                                          }
+                       },
+                       {
+                           "run":  "scan_prod_v4_obs_patch7_ft300k",
+                           "patch_size":  7,
+                           "obs_dim":  66,
+                           "train_steps":  300000,
+                           "learning_rate":  5E-05,
+                           "ent_coef":  0,
+                           "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                           "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                           "seed456":  {
+                                           "success_count":  99,
+                                           "crash_count":  0,
+                                           "success_rate":  0.99000000953674316,
+                                           "coverage_mean":  0.96698778867721558,
+                                           "coverage_ge_095_rate":  0.86,
+                                           "steps_mean":  352.42001342773438
+                                       },
+                           "robustness":  {
+                                              "per_seed":  [
+                                                               {
+                                                                   "seed":  1,
+                                                                   "success_rate":  0.93000000715255737,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.965738832950592,
+                                                                   "coverage_ge_095_rate":  0.84,
+                                                                   "steps_mean":  494.08999633789063
+                                                               },
+                                                               {
+                                                                   "seed":  2,
+                                                                   "success_rate":  0.93000000715255737,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.96523880958557118,
+                                                                   "coverage_ge_095_rate":  0.83,
+                                                                   "steps_mean":  496.6099853515625
+                                                               },
+                                                               {
+                                                                   "seed":  3,
+                                                                   "success_rate":  0.93000000715255737,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.96494287252426159,
+                                                                   "coverage_ge_095_rate":  0.83,
+                                                                   "steps_mean":  496.6300048828125
+                                                               }
+                                                           ],
+                                              "mean":  {
+                                                           "success_rate":  0.93000000715255737,
+                                                           "crash_count_sum":  0,
+                                                           "coverage_mean":  0.965306838353475,
+                                                           "coverage_ge_095_rate":  0.83333333333333337,
+                                                           "steps_mean":  495.77666219075519
+                                                       }
+                                          }
+                       }
+                   ]
+}

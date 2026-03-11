@@ -1,0 +1,344 @@
+﻿{
+    "experiment":  "scan_double_area_controlled_scale_test",
+    "date_utc":  "2026-02-28T02:08:38.8417577Z",
+    "primary_metric":  "coverage_ge_095_rate_mean_over_seeds",
+    "scale_definition":  "double area via scan_path_len_scale_min=2.0 and scan_path_len_scale_max=2.0",
+    "compared_configs":  [
+                             "A: patch=5 only",
+                             "B: patch=5 + global 8x8",
+                             "C: patch=7 only"
+                         ],
+    "seed456_ranking":  [
+                            {
+                                "id":  "C",
+                                "config":  "patch7_only",
+                                "run":  "scan_scale2_C_patch7_ft300k",
+                                "obs_aug":  {
+                                                "scan_obs_aug_enable":  true,
+                                                "scan_obs_patch_size":  7,
+                                                "scan_obs_boundary_feat":  true,
+                                                "scan_obs_global_coverage_enable":  false,
+                                                "scan_obs_global_size":  0,
+                                                "obs_dim":  66
+                                            },
+                                "train":  {
+                                              "total_timesteps":  300000,
+                                              "learning_rate":  5E-05,
+                                              "ent_coef":  0,
+                                              "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                              "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                              "area_scale_mode":  "scan_path_len_scale_min=max=2.0"
+                                          },
+                                "gate_seed456":  {
+                                                     "success_count":  98,
+                                                     "crash_count":  0,
+                                                     "success_rate":  0.98000001907348644,
+                                                     "coverage_mean":  0.944374978542328,
+                                                     "coverage_ge_095_rate":  0.51,
+                                                     "steps_mean":  516.69000244140625
+                                                 },
+                                "robustness":  {
+                                                   "per_seed":  [
+                                                                    {
+                                                                        "seed":  1,
+                                                                        "success_rate":  0.98000001907348644,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.943554699420929,
+                                                                        "coverage_ge_095_rate":  0.43,
+                                                                        "steps_mean":  509.77999877929688
+                                                                    },
+                                                                    {
+                                                                        "seed":  2,
+                                                                        "success_rate":  0.98000001907348644,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.94371092319488525,
+                                                                        "coverage_ge_095_rate":  0.43,
+                                                                        "steps_mean":  504.16000366210938
+                                                                    },
+                                                                    {
+                                                                        "seed":  3,
+                                                                        "success_rate":  0.98000001907348644,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.943945288658142,
+                                                                        "coverage_ge_095_rate":  0.44,
+                                                                        "steps_mean":  504.32998657226563
+                                                                    }
+                                                                ],
+                                                   "mean":  {
+                                                                "success_rate":  0.98000001907348644,
+                                                                "crash_count_sum":  0,
+                                                                "coverage_mean":  0.9437369704246521,
+                                                                "coverage_ge_095_rate":  0.43333333333333335,
+                                                                "steps_mean":  506.08999633789063
+                                                            }
+                                               }
+                            },
+                            {
+                                "id":  "A",
+                                "config":  "patch5_only",
+                                "run":  "scan_scale2_A_patch5_ft300k",
+                                "obs_aug":  {
+                                                "scan_obs_aug_enable":  true,
+                                                "scan_obs_patch_size":  5,
+                                                "scan_obs_boundary_feat":  true,
+                                                "scan_obs_global_coverage_enable":  false,
+                                                "scan_obs_global_size":  0,
+                                                "obs_dim":  42
+                                            },
+                                "train":  {
+                                              "total_timesteps":  300000,
+                                              "learning_rate":  5E-05,
+                                              "ent_coef":  0,
+                                              "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                              "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                              "area_scale_mode":  "scan_path_len_scale_min=max=2.0"
+                                          },
+                                "gate_seed456":  {
+                                                     "success_count":  98,
+                                                     "crash_count":  0,
+                                                     "success_rate":  0.98000001907348644,
+                                                     "coverage_mean":  0.910546898841858,
+                                                     "coverage_ge_095_rate":  0.18,
+                                                     "steps_mean":  550.57000732421875
+                                                 },
+                                "robustness":  {
+                                                   "per_seed":  [
+                                                                    {
+                                                                        "seed":  1,
+                                                                        "success_rate":  0.99000000953674316,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.91820311546325684,
+                                                                        "coverage_ge_095_rate":  0.17,
+                                                                        "steps_mean":  529.1099853515625
+                                                                    },
+                                                                    {
+                                                                        "seed":  2,
+                                                                        "success_rate":  0.99000000953674316,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.917929708957672,
+                                                                        "coverage_ge_095_rate":  0.16,
+                                                                        "steps_mean":  528.52001953125
+                                                                    },
+                                                                    {
+                                                                        "seed":  3,
+                                                                        "success_rate":  0.99000000953674316,
+                                                                        "crash_count":  0,
+                                                                        "coverage_mean":  0.91796875,
+                                                                        "coverage_ge_095_rate":  0.16,
+                                                                        "steps_mean":  528.02001953125
+                                                                    }
+                                                                ],
+                                                   "mean":  {
+                                                                "success_rate":  0.99000000953674316,
+                                                                "crash_count_sum":  0,
+                                                                "coverage_mean":  0.91803385814030969,
+                                                                "coverage_ge_095_rate":  0.16333333333333333,
+                                                                "steps_mean":  528.55000813802087
+                                                            }
+                                               }
+                            },
+                            {
+                                "id":  "B",
+                                "config":  "patch5_plus_global8x8",
+                                "run":  "scan_scale2_B_patch5_global8_ft300k",
+                                "obs_aug":  {
+                                                "scan_obs_aug_enable":  true,
+                                                "scan_obs_patch_size":  5,
+                                                "scan_obs_boundary_feat":  true,
+                                                "scan_obs_global_coverage_enable":  true,
+                                                "scan_obs_global_size":  8,
+                                                "obs_dim":  106
+                                            },
+                                "train":  {
+                                              "total_timesteps":  300000,
+                                              "learning_rate":  5E-05,
+                                              "ent_coef":  0,
+                                              "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                              "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                              "area_scale_mode":  "scan_path_len_scale_min=max=2.0"
+                                          },
+                                "gate_seed456":  {
+                                                     "success_count":  1,
+                                                     "crash_count":  0,
+                                                     "success_rate":  0.0099999997764825821,
+                                                     "coverage_mean":  0.75324219465255737,
+                                                     "coverage_ge_095_rate":  0.03,
+                                                     "steps_mean":  2379.6201171875
+                                                 },
+                                "robustness":  null
+                            }
+                        ],
+    "robust_evaluated_runs":  [
+                                  "scan_scale2_A_patch5_ft300k",
+                                  "scan_scale2_C_patch7_ft300k"
+                              ],
+    "winner_by_primary":  "scan_scale2_C_patch7_ft300k",
+    "winner_metrics":  {
+                           "success_rate":  0.98000001907348644,
+                           "crash_count_sum":  0,
+                           "coverage_mean":  0.9437369704246521,
+                           "coverage_ge_095_rate":  0.43333333333333335,
+                           "steps_mean":  506.08999633789063
+                       },
+    "note":  "Keep production_scan_v4 unchanged (current 5x5 baseline for standard area).",
+    "candidates":  [
+                       {
+                           "id":  "A",
+                           "config":  "patch5_only",
+                           "run":  "scan_scale2_A_patch5_ft300k",
+                           "obs_aug":  {
+                                           "scan_obs_aug_enable":  true,
+                                           "scan_obs_patch_size":  5,
+                                           "scan_obs_boundary_feat":  true,
+                                           "scan_obs_global_coverage_enable":  false,
+                                           "scan_obs_global_size":  0,
+                                           "obs_dim":  42
+                                       },
+                           "train":  {
+                                         "total_timesteps":  300000,
+                                         "learning_rate":  5E-05,
+                                         "ent_coef":  0,
+                                         "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                         "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                         "area_scale_mode":  "scan_path_len_scale_min=max=2.0"
+                                     },
+                           "gate_seed456":  {
+                                                "success_count":  98,
+                                                "crash_count":  0,
+                                                "success_rate":  0.98000001907348644,
+                                                "coverage_mean":  0.910546898841858,
+                                                "coverage_ge_095_rate":  0.18,
+                                                "steps_mean":  550.57000732421875
+                                            },
+                           "robustness":  {
+                                              "per_seed":  [
+                                                               {
+                                                                   "seed":  1,
+                                                                   "success_rate":  0.99000000953674316,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.91820311546325684,
+                                                                   "coverage_ge_095_rate":  0.17,
+                                                                   "steps_mean":  529.1099853515625
+                                                               },
+                                                               {
+                                                                   "seed":  2,
+                                                                   "success_rate":  0.99000000953674316,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.917929708957672,
+                                                                   "coverage_ge_095_rate":  0.16,
+                                                                   "steps_mean":  528.52001953125
+                                                               },
+                                                               {
+                                                                   "seed":  3,
+                                                                   "success_rate":  0.99000000953674316,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.91796875,
+                                                                   "coverage_ge_095_rate":  0.16,
+                                                                   "steps_mean":  528.02001953125
+                                                               }
+                                                           ],
+                                              "mean":  {
+                                                           "success_rate":  0.99000000953674316,
+                                                           "crash_count_sum":  0,
+                                                           "coverage_mean":  0.91803385814030969,
+                                                           "coverage_ge_095_rate":  0.16333333333333333,
+                                                           "steps_mean":  528.55000813802087
+                                                       }
+                                          }
+                       },
+                       {
+                           "id":  "B",
+                           "config":  "patch5_plus_global8x8",
+                           "run":  "scan_scale2_B_patch5_global8_ft300k",
+                           "obs_aug":  {
+                                           "scan_obs_aug_enable":  true,
+                                           "scan_obs_patch_size":  5,
+                                           "scan_obs_boundary_feat":  true,
+                                           "scan_obs_global_coverage_enable":  true,
+                                           "scan_obs_global_size":  8,
+                                           "obs_dim":  106
+                                       },
+                           "train":  {
+                                         "total_timesteps":  300000,
+                                         "learning_rate":  5E-05,
+                                         "ent_coef":  0,
+                                         "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                         "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                         "area_scale_mode":  "scan_path_len_scale_min=max=2.0"
+                                     },
+                           "gate_seed456":  {
+                                                "success_count":  1,
+                                                "crash_count":  0,
+                                                "success_rate":  0.0099999997764825821,
+                                                "coverage_mean":  0.75324219465255737,
+                                                "coverage_ge_095_rate":  0.03,
+                                                "steps_mean":  2379.6201171875
+                                            },
+                           "robustness":  null
+                       },
+                       {
+                           "id":  "C",
+                           "config":  "patch7_only",
+                           "run":  "scan_scale2_C_patch7_ft300k",
+                           "obs_aug":  {
+                                           "scan_obs_aug_enable":  true,
+                                           "scan_obs_patch_size":  7,
+                                           "scan_obs_boundary_feat":  true,
+                                           "scan_obs_global_coverage_enable":  false,
+                                           "scan_obs_global_size":  0,
+                                           "obs_dim":  66
+                                       },
+                           "train":  {
+                                         "total_timesteps":  300000,
+                                         "learning_rate":  5E-05,
+                                         "ent_coef":  0,
+                                         "warm_start_source":  "runs/production_scan_v3/best_model.zip",
+                                         "warm_start_method":  "partial_policy_warmstart_for_obs_mismatch",
+                                         "area_scale_mode":  "scan_path_len_scale_min=max=2.0"
+                                     },
+                           "gate_seed456":  {
+                                                "success_count":  98,
+                                                "crash_count":  0,
+                                                "success_rate":  0.98000001907348644,
+                                                "coverage_mean":  0.944374978542328,
+                                                "coverage_ge_095_rate":  0.51,
+                                                "steps_mean":  516.69000244140625
+                                            },
+                           "robustness":  {
+                                              "per_seed":  [
+                                                               {
+                                                                   "seed":  1,
+                                                                   "success_rate":  0.98000001907348644,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.943554699420929,
+                                                                   "coverage_ge_095_rate":  0.43,
+                                                                   "steps_mean":  509.77999877929688
+                                                               },
+                                                               {
+                                                                   "seed":  2,
+                                                                   "success_rate":  0.98000001907348644,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.94371092319488525,
+                                                                   "coverage_ge_095_rate":  0.43,
+                                                                   "steps_mean":  504.16000366210938
+                                                               },
+                                                               {
+                                                                   "seed":  3,
+                                                                   "success_rate":  0.98000001907348644,
+                                                                   "crash_count":  0,
+                                                                   "coverage_mean":  0.943945288658142,
+                                                                   "coverage_ge_095_rate":  0.44,
+                                                                   "steps_mean":  504.32998657226563
+                                                               }
+                                                           ],
+                                              "mean":  {
+                                                           "success_rate":  0.98000001907348644,
+                                                           "crash_count_sum":  0,
+                                                           "coverage_mean":  0.9437369704246521,
+                                                           "coverage_ge_095_rate":  0.43333333333333335,
+                                                           "steps_mean":  506.08999633789063
+                                                       }
+                                          }
+                       }
+                   ]
+}

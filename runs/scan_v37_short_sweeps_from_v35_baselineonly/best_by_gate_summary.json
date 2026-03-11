@@ -1,0 +1,27 @@
+{
+  "base_model": "runs\\scan_prod_v35_best_by_gate\\best_model.zip",
+  "preset": "A2_ABL_B125_T85",
+  "timesteps": 300000,
+  "episodes": 100,
+  "seed_train": 123,
+  "seed_gate": 456,
+  "best_row": {
+    "candidate": "baseline_nofinetune",
+    "model": "runs\\scan_prod_v35_best_by_gate\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35_baselineonly\\baseline_nofinetune\\gates\\baseline_nofinetune_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.0125
+    },
+    "success_count": 69,
+    "crash_count": 0,
+    "coverage_mean": 0.8551551103591919,
+    "coverage_min": 0.6700000166893005,
+    "time_to_95_mean": 2026.1300048828125
+  },
+  "best_model": "runs\\scan_v37_short_sweeps_from_v35_baselineonly\\best_by_gate_model.zip",
+  "all_results": "runs\\scan_v37_short_sweeps_from_v35_baselineonly\\sweep_gate_results.json"
+}

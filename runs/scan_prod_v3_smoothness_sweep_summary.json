@@ -1,0 +1,98 @@
+﻿{
+    "generated_utc":  "2026-02-27T13:15:50.8202174Z",
+    "base_model":  "runs/production_scan_v3/best_model.zip",
+    "base_robust":  {
+                        "success_mean":  78,
+                        "coverage_mean":  0.88821973403294885,
+                        "coverage_ge_095_rate_mean":  0.33,
+                        "crash_sum":  0,
+                        "seeds":  [
+                                      1,
+                                      2,
+                                      3
+                                  ]
+                    },
+    "candidates_seed456":  [
+                               {
+                                   "run":  "runs/scan_prod_v3_yawratepen002_ft300k",
+                                   "scan_k_yawrate_pen":  0.002,
+                                   "scan_k_slip_pen":  0,
+                                   "cov95":  0.29,
+                                   "cov93":  0.37,
+                                   "cov90":  0.46,
+                                   "coverage_mean":  0.86294281482696533,
+                                   "success":  64,
+                                   "crash":  0,
+                                   "gate_json":  "runs/scan_prod_v3_yawratepen002_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "run":  "runs/scan_prod_v3_slippen002_ft300k",
+                                   "scan_k_yawrate_pen":  0,
+                                   "scan_k_slip_pen":  0.002,
+                                   "cov95":  0.21,
+                                   "cov93":  0.28,
+                                   "cov90":  0.37,
+                                   "coverage_mean":  0.84067130088806152,
+                                   "success":  62,
+                                   "crash":  0,
+                                   "gate_json":  "runs/scan_prod_v3_slippen002_ft300k/gates/seed456_100eps.json"
+                               }
+                           ],
+    "selected_for_robust":  {
+                                "run":  "runs/scan_prod_v3_yawratepen002_ft300k",
+                                "scan_k_yawrate_pen":  0.002,
+                                "scan_k_slip_pen":  0
+                            },
+    "selected_robust_per_seed":  [
+                                     {
+                                         "seed":  1,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov_mean":  0.88300406932830811,
+                                         "cov95":  0.26,
+                                         "cov93":  0.36,
+                                         "cov90":  0.54,
+                                         "file":  "runs/scan_prod_v3_yawratepen002_ft300k/gates/robust_s1.json"
+                                     },
+                                     {
+                                         "seed":  2,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov_mean":  0.88310402631759644,
+                                         "cov95":  0.26,
+                                         "cov93":  0.36,
+                                         "cov90":  0.55,
+                                         "file":  "runs/scan_prod_v3_yawratepen002_ft300k/gates/robust_s2.json"
+                                     },
+                                     {
+                                         "seed":  3,
+                                         "success":  74,
+                                         "crash":  0,
+                                         "cov_mean":  0.88260406255722046,
+                                         "cov95":  0.26,
+                                         "cov93":  0.36,
+                                         "cov90":  0.55,
+                                         "file":  "runs/scan_prod_v3_yawratepen002_ft300k/gates/robust_s3.json"
+                                     }
+                                 ],
+    "selected_robust_mean":  {
+                                 "success_mean":  74.666666666666671,
+                                 "crash_sum":  0,
+                                 "coverage_mean":  0.882904052734375,
+                                 "coverage_ge_095_rate_mean":  0.26,
+                                 "coverage_ge_093_rate_mean":  0.36000000000000004,
+                                 "coverage_ge_090_rate_mean":  0.54666666666666675
+                             },
+    "selection_policy":  {
+                             "primary":  "coverage_ge_095_rate_mean_over_seeds",
+                             "tie_breakers":  [
+                                                  "coverage_mean_over_seeds",
+                                                  "success_mean_over_seeds",
+                                                  "crash_sum"
+                                              ]
+                         },
+    "recommendation":  {
+                           "keep_production_v3":  true,
+                           "reason":  "Yaw/slip regularizer winner did not exceed production v3 primary metric."
+                       }
+}

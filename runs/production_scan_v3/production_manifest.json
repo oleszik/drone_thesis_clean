@@ -1,0 +1,30 @@
+﻿{
+    "model_path":  "D:\\drone_thesis_clean\\runs\\production_scan_v3\\best_model.zip",
+    "promoted_from_run":  "runs/scan_prod_v2_finish_timelate_boundary_ft300k",
+    "preset":  "A2_FINISH_TIMELATE_BOUNDARY",
+    "selection_primary_metric":  "coverage_ge_095_rate_mean_over_seeds",
+    "robust_summary":  {
+                           "success_mean":  78,
+                           "coverage_mean":  0.88821973403294885,
+                           "coverage_ge_095_rate_mean":  0.33,
+                           "crash_sum":  0,
+                           "seeds":  [
+                                         1,
+                                         2,
+                                         3
+                                     ]
+                       },
+    "key_knobs":  {
+                      "scan_k_cov_gain":  0.012,
+                      "scan_k_cov_gain_late":  0.01,
+                      "scan_cov_late_thresh":  0.85,
+                      "scan_k_cov_gain_boundary":  0.02,
+                      "scan_cov_finish_thresh":  0.93,
+                      "scan_k_cov_gain_finish":  0.02,
+                      "scan_k_time_late":  0.0001,
+                      "scan_oob_grace_steps":  3,
+                      "scan_max_steps":  2400
+                  },
+    "promoted_utc":  "2026-02-27T07:45:16.9610136Z",
+    "git_commit_hash":  "026eafc98845dd8036ee0c9868b8df83fb018138"
+}

@@ -1,0 +1,86 @@
+﻿{
+    "generated_utc":  "2026-02-27T07:27:14.2754347Z",
+    "base_production_v2":  {
+                               "preset":  "A2_FINISH_TIMELATE",
+                               "robust_success_mean":  77,
+                               "robust_coverage_mean":  0.88559722900390625,
+                               "robust_cov95_rate_mean":  0.25
+                           },
+    "candidates_seed456":  [
+                               {
+                                   "preset":  "A2_BOUNDARY",
+                                   "run":  "runs/scan_prod_v2_boundary_ft300k",
+                                   "success_count":  72,
+                                   "crash_count":  0,
+                                   "coverage_mean":  0.86575514078140259,
+                                   "coverage_ge_095_rate":  0.23,
+                                   "gate_json":  "runs/scan_prod_v2_boundary_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "preset":  "A2_FINISH_TIMELATE_BOUNDARY",
+                                   "run":  "runs/scan_prod_v2_finish_timelate_boundary_ft300k",
+                                   "success_count":  69,
+                                   "crash_count":  0,
+                                   "coverage_mean":  0.867510199546814,
+                                   "coverage_ge_095_rate":  0.27,
+                                   "gate_json":  "runs/scan_prod_v2_finish_timelate_boundary_ft300k/gates/seed456_100eps.json"
+                               }
+                           ],
+    "winner_by_seed456_primary":  {
+                                      "preset":  "A2_FINISH_TIMELATE_BOUNDARY",
+                                      "primary_metric":  "coverage_ge_095_rate",
+                                      "coverage_ge_095_rate":  0.27
+                                  },
+    "winner_robust":  [
+                          {
+                              "file":  "runs/scan_prod_v2_finish_timelate_boundary_ft300k/gates/robust_s1.json",
+                              "seed":  1,
+                              "success_count":  78,
+                              "crash_count":  0,
+                              "coverage_mean":  0.88885307312011719,
+                              "coverage_ge_095_rate":  0.33,
+                              "coverage_ge_093_rate":  0.39,
+                              "coverage_ge_090_rate":  0.51
+                          },
+                          {
+                              "file":  "runs/scan_prod_v2_finish_timelate_boundary_ft300k/gates/robust_s2.json",
+                              "seed":  2,
+                              "success_count":  78,
+                              "crash_count":  0,
+                              "coverage_mean":  0.88805305957794189,
+                              "coverage_ge_095_rate":  0.33,
+                              "coverage_ge_093_rate":  0.39,
+                              "coverage_ge_090_rate":  0.5
+                          },
+                          {
+                              "file":  "runs/scan_prod_v2_finish_timelate_boundary_ft300k/gates/robust_s3.json",
+                              "seed":  3,
+                              "success_count":  78,
+                              "crash_count":  0,
+                              "coverage_mean":  0.88775306940078735,
+                              "coverage_ge_095_rate":  0.33,
+                              "coverage_ge_093_rate":  0.39,
+                              "coverage_ge_090_rate":  0.5
+                          }
+                      ],
+    "winner_robust_mean":  {
+                               "success_mean":  78,
+                               "crash_sum":  0,
+                               "coverage_mean":  0.88821973403294885,
+                               "coverage_ge_095_rate_mean":  0.33,
+                               "coverage_ge_093_rate_mean":  0.38999999999999996,
+                               "coverage_ge_090_rate_mean":  0.5033333333333333
+                           },
+    "selection_policy":  {
+                             "primary":  "coverage_ge_095_rate_mean_over_seeds",
+                             "tie_breakers":  [
+                                                  "coverage_mean_over_seeds",
+                                                  "success_mean_over_seeds",
+                                                  "crash_sum"
+                                              ]
+                         },
+    "recommendation":  {
+                           "promote_boundary_variant":  true,
+                           "notes":  "Boundary variant improves cov95-rate mean over seeds versus production_v2 baseline."
+                       }
+}

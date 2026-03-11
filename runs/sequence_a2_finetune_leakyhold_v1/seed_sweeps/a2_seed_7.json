@@ -1,0 +1,12 @@
+{
+  "episodes": 50,
+  "seed_base": 7,
+  "success_rate_mean": 0.9800000190734863,
+  "success_rate_std": 0.14000000059604645,
+  "steps_mean": 652.4600219726562,
+  "steps_std": 39.51415252685547,
+  "mean_steps_success": 653.7755126953125,
+  "std_steps_success": 38.81629180908203,
+  "crash_rate_mean": 0.019999999552965164,
+  "crash_rate_std": 0.14000000059604645
+}

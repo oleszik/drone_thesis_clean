@@ -1,0 +1,96 @@
+﻿{
+    "generated_utc":  "2026-02-27T12:58:34.2270011Z",
+    "base_model":  "runs/production_scan_v3/best_model.zip",
+    "base_robust":  {
+                        "success_mean":  78,
+                        "coverage_mean":  0.88821973403294885,
+                        "coverage_ge_095_rate_mean":  0.33,
+                        "crash_sum":  0,
+                        "seeds":  [
+                                      1,
+                                      2,
+                                      3
+                                  ]
+                    },
+    "candidates_seed456":  [
+                               {
+                                   "run":  "runs/scan_prod_v3_finish2_g003_ft300k",
+                                   "finish2_gain":  0.03,
+                                   "cov95":  0.26,
+                                   "cov93":  0.33,
+                                   "cov90":  0.38,
+                                   "coverage_mean":  0.86157965660095215,
+                                   "success":  65,
+                                   "crash":  0,
+                                   "gate_json":  "runs/scan_prod_v3_finish2_g003_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "run":  "runs/scan_prod_v3_finish2_g005_ft300k",
+                                   "finish2_gain":  0.05,
+                                   "cov95":  0.18,
+                                   "cov93":  0.23,
+                                   "cov90":  0.33,
+                                   "coverage_mean":  0.84225916862487793,
+                                   "success":  62,
+                                   "crash":  0,
+                                   "gate_json":  "runs/scan_prod_v3_finish2_g005_ft300k/gates/seed456_100eps.json"
+                               }
+                           ],
+    "selected_for_robust":  {
+                                "run":  "runs/scan_prod_v3_finish2_g003_ft300k",
+                                "finish2_gain":  0.03,
+                                "finish2_thresh":  0.96
+                            },
+    "selected_robust_per_seed":  [
+                                     {
+                                         "seed":  1,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov_mean":  0.88394278287887573,
+                                         "cov95":  0.31,
+                                         "cov93":  0.41,
+                                         "cov90":  0.46,
+                                         "file":  "runs/scan_prod_v3_finish2_g003_ft300k/gates/robust_s1.json"
+                                     },
+                                     {
+                                         "seed":  2,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov_mean":  0.88424277305603027,
+                                         "cov95":  0.31,
+                                         "cov93":  0.41,
+                                         "cov90":  0.47,
+                                         "file":  "runs/scan_prod_v3_finish2_g003_ft300k/gates/robust_s2.json"
+                                     },
+                                     {
+                                         "seed":  3,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov_mean":  0.88394296169281006,
+                                         "cov95":  0.31,
+                                         "cov93":  0.41,
+                                         "cov90":  0.47,
+                                         "file":  "runs/scan_prod_v3_finish2_g003_ft300k/gates/robust_s3.json"
+                                     }
+                                 ],
+    "selected_robust_mean":  {
+                                 "success_mean":  75,
+                                 "crash_sum":  0,
+                                 "coverage_mean":  0.88404283920923865,
+                                 "coverage_ge_095_rate_mean":  0.31,
+                                 "coverage_ge_093_rate_mean":  0.41,
+                                 "coverage_ge_090_rate_mean":  0.46666666666666662
+                             },
+    "selection_policy":  {
+                             "primary":  "coverage_ge_095_rate_mean_over_seeds",
+                             "tie_breakers":  [
+                                                  "coverage_mean_over_seeds",
+                                                  "success_mean_over_seeds",
+                                                  "crash_sum"
+                                              ]
+                         },
+    "recommendation":  {
+                           "keep_production_v3":  true,
+                           "reason":  "Finish2 candidate did not beat production v3 on primary metric."
+                       }
+}

@@ -1,0 +1,26 @@
+﻿{
+    "seeds":  [
+                  1,
+                  2,
+                  3
+              ],
+    "episodes_per_seed":  100,
+    "success_rate_mean":  0.98000001907348644,
+    "success_count_mean":  98,
+    "crash_count_sum":  0,
+    "coverage_mean":  0.9437369704246521,
+    "coverage_min_mean":  0.60546875,
+    "coverage_ge_095_rate_mean":  0.43333333333333335,
+    "steps_mean":  554.09000651041663,
+    "yaw_rate_abs_p95_mean":  0.59999990463256836,
+    "dv_xy_mean":  0.13707653681437174,
+    "scan_max_steps_base":  2400,
+    "path_len_scale":  2,
+    "scan_max_steps_eff":  4800,
+    "scan_max_steps_cap_hit_any":  false,
+    "files":  [
+                  "runs\\production_scan_v4_scale2\\metrics\\gates\\scale2_auto_s1_100eps.json",
+                  "runs\\production_scan_v4_scale2\\metrics\\gates\\scale2_auto_s2_100eps.json",
+                  "runs\\production_scan_v4_scale2\\metrics\\gates\\scale2_auto_s3_100eps.json"
+              ]
+}

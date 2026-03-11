@@ -1,0 +1,193 @@
+{
+  "selected_profile": "patch7_scale2",
+  "model_path": "runs/production_scan_v4_scale2/best_model.zip",
+  "sitl_recommended_enabled": 1,
+  "sitl_recommended_source": "latest:pinned:runs/production_ardupilot_defaults/scale2_opt_summary.json",
+  "sitl_recommended_arm": "A_baseline",
+  "sitl_recommended_profile_match": 1,
+  "connection_requested": "udp:127.0.0.1:14551",
+  "connection_used": "udp:127.0.0.1:14551",
+  "requested_message_intervals": [
+    "GLOBAL_POSITION_INT",
+    "VFR_HUD"
+  ],
+  "anchor_origin": 1,
+  "scan_origin_xy": [
+    18.266759872436523,
+    21.838228225708008
+  ],
+  "bounds_minmax_xy": [
+    0.26675987243652344,
+    36.26675987243652,
+    3.838228225708008,
+    39.83822822570801
+  ],
+  "oob_center_xy": [
+    18.266759872436523,
+    21.838228225708008
+  ],
+  "frame_mismatch_any": 0,
+  "prefer_sitl_tcp": 0,
+  "preflight_timeout_s": 30.0,
+  "require_mode_known": 0,
+  "ekf_mode": "wait",
+  "ack_verbosity": "important",
+  "preflight_result": {
+    "status": "ok",
+    "reason": ""
+  },
+  "last_heartbeat": {
+    "mode": "GUIDED",
+    "custom_mode": 4,
+    "armed": 1,
+    "system_status": 4,
+    "last_heartbeat_time_s": 9325.237760913,
+    "hb_base_mode": 217,
+    "hb_custom_mode": 4,
+    "hb_system_status": 4,
+    "relative_alt_m": 10.006,
+    "relative_alt_source": "GLOBAL_POSITION_INT"
+  },
+  "auto_guided": 1,
+  "auto_arm": 1,
+  "auto_takeoff_m": 10.0,
+  "takeoff_skipped": 1,
+  "takeoff_skip_reason": "already_in_air alt=10.01m src=LOCAL_POSITION_NED target=10.00m tol=1.00m",
+  "preflight_events": [
+    {
+      "t_wall_s": 1772308034.2720964,
+      "event": "heartbeat_wait",
+      "status": "start",
+      "timeout_s": 30.0
+    },
+    {
+      "t_wall_s": 1772308034.2773392,
+      "event": "heartbeat_wait",
+      "status": "ok",
+      "mode": "GUIDED",
+      "custom_mode": 4,
+      "armed": 1,
+      "system_status": 4,
+      "last_heartbeat_time_s": 9318.158639377,
+      "hb_base_mode": 217,
+      "hb_custom_mode": 4,
+      "hb_system_status": 4,
+      "relative_alt_m": null,
+      "relative_alt_source": "none"
+    },
+    {
+      "t_wall_s": 1772308034.2773423,
+      "event": "set_guided",
+      "status": "start"
+    },
+    {
+      "t_wall_s": 1772308034.2774296,
+      "event": "set_guided",
+      "status": "ok",
+      "ack_result": null,
+      "mode_confirmed": 1,
+      "require_mode_known": 0,
+      "mode": "GUIDED",
+      "custom_mode": 4,
+      "armed": 1,
+      "system_status": 4,
+      "last_heartbeat_time_s": 9318.158639377,
+      "hb_base_mode": 217,
+      "hb_custom_mode": 4,
+      "hb_system_status": 4,
+      "relative_alt_m": null,
+      "relative_alt_source": "none"
+    },
+    {
+      "t_wall_s": 1772308034.2774308,
+      "event": "arm",
+      "status": "start"
+    },
+    {
+      "t_wall_s": 1772308034.283397,
+      "event": "arm",
+      "status": "ok",
+      "ack_result": 0,
+      "armed_confirmed": 1
+    },
+    {
+      "t_wall_s": 1772308034.2833996,
+      "event": "alt_wait",
+      "status": "start",
+      "timeout_s": 1.5
+    },
+    {
+      "t_wall_s": 1772308034.2834027,
+      "event": "alt_wait",
+      "status": "ok",
+      "alt_m": 10.005202293395996,
+      "alt_source": "LOCAL_POSITION_NED"
+    },
+    {
+      "t_wall_s": 1772308034.2834115,
+      "event": "takeoff",
+      "status": "skipped",
+      "target_alt_m": 10.0,
+      "tolerance_m": 1.0,
+      "rel_alt_m": 10.005202293395996,
+      "alt_source": "LOCAL_POSITION_NED",
+      "reason": "already_in_air alt=10.01m src=LOCAL_POSITION_NED target=10.00m tol=1.00m"
+    }
+  ],
+  "scale": 2.0,
+  "bounds": [
+    40.0,
+    40.0
+  ],
+  "margin_m": 2.0,
+  "step_len": 5.0,
+  "accept_radius": 1.25,
+  "final_step_len_m": 5.0,
+  "mean_step_len_eff": 4.7,
+  "final_accept_radius_m": 1.25,
+  "rate_hz": 5.0,
+  "policy_hz": 2.0,
+  "policy_hz_min": 1.0,
+  "policy_hz_max": 3.0,
+  "policy_hz_current": 2.2,
+  "coverage_hz": 5.0,
+  "num_policy_ticks": 12,
+  "scan_max_steps_eff": 4800,
+  "duration_s": 8.000136990000101,
+  "final_coverage": 0.015425330812854443,
+  "coverage_mean": 0.0077882797731569,
+  "time_to_95_s": null,
+  "boundary_covered_frac": 0.0,
+  "interior_covered_frac": 0.016557097638178718,
+  "clamp_count": 1,
+  "clamp_rate_per_min": 7.49987157407404,
+  "oob_events": 0,
+  "oob_recovery_time_s": 0.0,
+  "mean_abs_cross_track": 0.0,
+  "num_lane_resets": 2,
+  "lookahead_enabled": 1,
+  "mean_lookahead_delta_m": 0.07012701630592347,
+  "lane_keep_enabled": 0,
+  "exit_reason": "step_limit",
+  "mean_dist_to_target": 3.6823281504110357,
+  "p95_dist_to_target": 5.2326620732871625,
+  "mean_progress_per_s": -0.5800024068104835,
+  "p95_progress_per_s": 6.4433536113642305,
+  "num_target_updates": 3,
+  "num_corner_events": 1,
+  "target_refresh_mode": "hold",
+  "use_vel_caps": 1,
+  "adaptive_tracking": 0,
+  "adaptive_event_count": 0,
+  "adaptive_bad_count": 0,
+  "adaptive_good_count": 0,
+  "adaptive_last_p95_dist_to_target": 5.51168188866593,
+  "adaptive_last_mean_progress_per_s": 2.161841105527631,
+  "initial_step_len": 5.0,
+  "initial_accept_radius": 1.25,
+  "initial_vxy_cap": 1.5,
+  "vxy_cap": 1.5,
+  "final_vxy_cap": 1.5,
+  "vz_cap": 0.5,
+  "corner_vxy_cap": 0.8
+}

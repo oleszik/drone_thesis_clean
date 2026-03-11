@@ -1,0 +1,663 @@
+{
+  "created_at": "2026-02-28 13:55:59",
+  "out_dir": "runs\\ardupilot_param_sweep\\20260228_133715",
+  "config": {
+    "scale_bucket": "scale2",
+    "scan_path_len_scale": 2.0,
+    "conn": "udp:127.0.0.1:14550",
+    "model": "auto",
+    "preset": "A2",
+    "bounds_m": [
+      40.0,
+      40.0
+    ],
+    "duration_s": 120.0,
+    "runs": 3,
+    "grid": "step=3,4,5;accept=0.75,1.0,1.25;vxy=1.0,1.2,1.5",
+    "dry_run": 0,
+    "two_stage": 1,
+    "auto_bless": 0
+  },
+  "pinned_baseline_path": "runs\\production_ardupilot_defaults\\scale2_opt_summary.json",
+  "pinned_toggles": {
+    "lookahead_enable": 1,
+    "step_sched_enable": 1,
+    "lane_keep_enable": 0,
+    "adaptive_tracking": 0
+  },
+  "baseline_metrics": {
+    "coverage_mean": 0.002748582230623819,
+    "cov95_hit_rate": 0.0,
+    "p95_dist_to_target": 25.320844122715712,
+    "clamp_rate_per_min": 0.0,
+    "oob_events": 0.0,
+    "mean_abs_cross_track": 0.0
+  },
+  "stage_summaries": {
+    "A": {
+      "mode": "coarse_step_vxy",
+      "accept_fixed": 1.0,
+      "candidate_count": 9,
+      "ranked": [
+        {
+          "stage": "A",
+          "candidate_id": 1,
+          "params": {
+            "step_len_m": 3.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.0
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_001\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 1
+        },
+        {
+          "stage": "A",
+          "candidate_id": 2,
+          "params": {
+            "step_len_m": 3.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.2
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_002\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 2
+        },
+        {
+          "stage": "A",
+          "candidate_id": 3,
+          "params": {
+            "step_len_m": 3.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.5
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_003\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 3
+        },
+        {
+          "stage": "A",
+          "candidate_id": 4,
+          "params": {
+            "step_len_m": 4.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.0
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_004\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 4
+        },
+        {
+          "stage": "A",
+          "candidate_id": 5,
+          "params": {
+            "step_len_m": 4.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.2
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_005\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 5
+        },
+        {
+          "stage": "A",
+          "candidate_id": 6,
+          "params": {
+            "step_len_m": 4.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.5
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_006\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 6
+        },
+        {
+          "stage": "A",
+          "candidate_id": 7,
+          "params": {
+            "step_len_m": 5.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.0
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_007\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 7
+        },
+        {
+          "stage": "A",
+          "candidate_id": 8,
+          "params": {
+            "step_len_m": 5.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.2
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_008\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 8
+        },
+        {
+          "stage": "A",
+          "candidate_id": 9,
+          "params": {
+            "step_len_m": 5.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.5
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_009\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 9
+        }
+      ],
+      "best_candidate": {
+        "stage": "A",
+        "candidate_id": 1,
+        "params": {
+          "step_len_m": 3.0,
+          "accept_radius_m": 1.0,
+          "vxy_cap": 1.0
+        },
+        "returncode": 1,
+        "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_001\\suite_summary.json",
+        "metrics": {
+          "coverage_mean": 0.002495274102079395,
+          "cov95_hit_rate": 0.0,
+          "p95_dist_to_target": 25.34784412271571,
+          "clamp_rate_per_min": 0.0,
+          "oob_events": 0.0,
+          "mean_abs_cross_track": 0.0
+        },
+        "rank": 1
+      }
+    },
+    "B": {
+      "mode": "refine_accept",
+      "step_fixed": 3.0,
+      "vxy_fixed": 1.0,
+      "candidate_count": 3,
+      "ranked": [
+        {
+          "stage": "B",
+          "candidate_id": 10,
+          "params": {
+            "step_len_m": 3.0,
+            "accept_radius_m": 0.75,
+            "vxy_cap": 1.0
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_010\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 1
+        },
+        {
+          "stage": "B",
+          "candidate_id": 11,
+          "params": {
+            "step_len_m": 3.0,
+            "accept_radius_m": 1.0,
+            "vxy_cap": 1.0
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_011\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 2
+        },
+        {
+          "stage": "B",
+          "candidate_id": 12,
+          "params": {
+            "step_len_m": 3.0,
+            "accept_radius_m": 1.25,
+            "vxy_cap": 1.0
+          },
+          "returncode": 1,
+          "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_012\\suite_summary.json",
+          "metrics": {
+            "coverage_mean": 0.002495274102079395,
+            "cov95_hit_rate": 0.0,
+            "p95_dist_to_target": 25.34784412271571,
+            "clamp_rate_per_min": 0.0,
+            "oob_events": 0.0,
+            "mean_abs_cross_track": 0.0
+          },
+          "rank": 3
+        }
+      ],
+      "best_candidate": {
+        "stage": "B",
+        "candidate_id": 10,
+        "params": {
+          "step_len_m": 3.0,
+          "accept_radius_m": 0.75,
+          "vxy_cap": 1.0
+        },
+        "returncode": 1,
+        "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_010\\suite_summary.json",
+        "metrics": {
+          "coverage_mean": 0.002495274102079395,
+          "cov95_hit_rate": 0.0,
+          "p95_dist_to_target": 25.34784412271571,
+          "clamp_rate_per_min": 0.0,
+          "oob_events": 0.0,
+          "mean_abs_cross_track": 0.0
+        },
+        "rank": 1
+      }
+    }
+  },
+  "bless_threshold_primary_delta": 0.001,
+  "candidates": [
+    {
+      "stage": "A",
+      "candidate_id": 1,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_001\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 1
+    },
+    {
+      "stage": "A",
+      "candidate_id": 2,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.2
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_002\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 2
+    },
+    {
+      "stage": "A",
+      "candidate_id": 3,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.5
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_003\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 3
+    },
+    {
+      "stage": "A",
+      "candidate_id": 4,
+      "params": {
+        "step_len_m": 4.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_004\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 4
+    },
+    {
+      "stage": "A",
+      "candidate_id": 5,
+      "params": {
+        "step_len_m": 4.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.2
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_005\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 5
+    },
+    {
+      "stage": "A",
+      "candidate_id": 6,
+      "params": {
+        "step_len_m": 4.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.5
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_006\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 6
+    },
+    {
+      "stage": "A",
+      "candidate_id": 7,
+      "params": {
+        "step_len_m": 5.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_007\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 7
+    },
+    {
+      "stage": "A",
+      "candidate_id": 8,
+      "params": {
+        "step_len_m": 5.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.2
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_008\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 8
+    },
+    {
+      "stage": "A",
+      "candidate_id": 9,
+      "params": {
+        "step_len_m": 5.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.5
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_009\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 9
+    },
+    {
+      "stage": "B",
+      "candidate_id": 10,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 0.75,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_010\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 1
+    },
+    {
+      "stage": "B",
+      "candidate_id": 11,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_011\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 2
+    },
+    {
+      "stage": "B",
+      "candidate_id": 12,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.25,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_012\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 3
+    }
+  ],
+  "ranked": [
+    {
+      "stage": "B",
+      "candidate_id": 10,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 0.75,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_010\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 1
+    },
+    {
+      "stage": "B",
+      "candidate_id": 11,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.0,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_011\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 2
+    },
+    {
+      "stage": "B",
+      "candidate_id": 12,
+      "params": {
+        "step_len_m": 3.0,
+        "accept_radius_m": 1.25,
+        "vxy_cap": 1.0
+      },
+      "returncode": 1,
+      "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_012\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002495274102079395,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.34784412271571,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 3
+    }
+  ],
+  "best_candidate": {
+    "stage": "B",
+    "candidate_id": 10,
+    "params": {
+      "step_len_m": 3.0,
+      "accept_radius_m": 0.75,
+      "vxy_cap": 1.0
+    },
+    "returncode": 1,
+    "suite_summary_path": "runs\\ardupilot_param_sweep\\20260228_133715\\cand_010\\suite_summary.json",
+    "metrics": {
+      "coverage_mean": 0.002495274102079395,
+      "cov95_hit_rate": 0.0,
+      "p95_dist_to_target": 25.34784412271571,
+      "clamp_rate_per_min": 0.0,
+      "oob_events": 0.0,
+      "mean_abs_cross_track": 0.0
+    },
+    "rank": 1
+  },
+  "improved_vs_baseline": false,
+  "auto_bless_performed": 0,
+  "auto_bless_succeeded": 0,
+  "auto_bless_info": {},
+  "failures": 12
+}

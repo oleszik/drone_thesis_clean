@@ -1,0 +1,106 @@
+﻿{
+    "generated_utc":  "2026-02-27T06:39:00.6555995Z",
+    "candidates":  [
+                       {
+                           "preset":  "A2_FINISH",
+                           "run":  "runs/scan_prod_v2_finish_ft300k",
+                           "success_count":  67,
+                           "crash_count":  0,
+                           "coverage_mean":  0.86063063144683838,
+                           "coverage_min":  0.68999999761581421,
+                           "coverage_ge_090_rate":  0.42,
+                           "coverage_ge_093_rate":  0.28,
+                           "coverage_ge_095_rate":  0.21,
+                           "overlap_mean":  16.073101043701172,
+                           "time_to_95_mean":  2003.4000244140625,
+                           "gate_json":  "runs\\scan_prod_v2_finish_ft300k\\gates\\seed456_100eps.json"
+                       },
+                       {
+                           "preset":  "A2_TIMELATE",
+                           "run":  "runs/scan_prod_v2_timelate_ft300k",
+                           "success_count":  62,
+                           "crash_count":  0,
+                           "coverage_mean":  0.83816736936569214,
+                           "coverage_min":  0.6600000262260437,
+                           "coverage_ge_090_rate":  0.35,
+                           "coverage_ge_093_rate":  0.25,
+                           "coverage_ge_095_rate":  0.22,
+                           "overlap_mean":  18.688190460205082,
+                           "time_to_95_mean":  1982.0899658203125,
+                           "gate_json":  "runs\\scan_prod_v2_timelate_ft300k\\gates\\seed456_100eps.json"
+                       },
+                       {
+                           "preset":  "A2_FINISH_TIMELATE",
+                           "run":  "runs/scan_prod_v2_finish_timelate_ft300k",
+                           "success_count":  68,
+                           "crash_count":  0,
+                           "coverage_mean":  0.86321425437927246,
+                           "coverage_min":  0.68000000715255737,
+                           "coverage_ge_090_rate":  0.38,
+                           "coverage_ge_093_rate":  0.31,
+                           "coverage_ge_095_rate":  0.24,
+                           "overlap_mean":  16.79688835144043,
+                           "time_to_95_mean":  1988.4200439453125,
+                           "gate_json":  "runs\\scan_prod_v2_finish_timelate_ft300k\\gates\\seed456_100eps.json"
+                       }
+                   ],
+    "best_by_gate":  {
+                         "preset":  "A2_FINISH_TIMELATE",
+                         "run":  "runs/scan_prod_v2_finish_timelate_ft300k",
+                         "success_count":  68,
+                         "crash_count":  0,
+                         "coverage_mean":  0.86321425437927246,
+                         "coverage_min":  0.68000000715255737,
+                         "coverage_ge_090_rate":  0.38,
+                         "coverage_ge_093_rate":  0.31,
+                         "coverage_ge_095_rate":  0.24,
+                         "overlap_mean":  16.79688835144043,
+                         "time_to_95_mean":  1988.4200439453125,
+                         "gate_json":  "runs\\scan_prod_v2_finish_timelate_ft300k\\gates\\seed456_100eps.json"
+                     },
+    "robust_winner_seeds":  [
+                                {
+                                    "seed":  1,
+                                    "success_count":  77,
+                                    "crash_count":  0,
+                                    "coverage_mean":  0.88553065061569214,
+                                    "coverage_min":  0.68000000715255737,
+                                    "coverage_ge_090_rate":  0.52,
+                                    "coverage_ge_093_rate":  0.38,
+                                    "coverage_ge_095_rate":  0.25,
+                                    "file":  "D:\\drone_thesis_clean\\runs\\scan_prod_v2_finish_timelate_ft300k\\gates\\robust_s1.json"
+                                },
+                                {
+                                    "seed":  2,
+                                    "success_count":  77,
+                                    "crash_count":  0,
+                                    "coverage_mean":  0.88583052158355713,
+                                    "coverage_min":  0.68000000715255737,
+                                    "coverage_ge_090_rate":  0.52,
+                                    "coverage_ge_093_rate":  0.38,
+                                    "coverage_ge_095_rate":  0.25,
+                                    "file":  "D:\\drone_thesis_clean\\runs\\scan_prod_v2_finish_timelate_ft300k\\gates\\robust_s2.json"
+                                },
+                                {
+                                    "seed":  3,
+                                    "success_count":  77,
+                                    "crash_count":  0,
+                                    "coverage_mean":  0.88543051481246948,
+                                    "coverage_min":  0.68000000715255737,
+                                    "coverage_ge_090_rate":  0.52,
+                                    "coverage_ge_093_rate":  0.38,
+                                    "coverage_ge_095_rate":  0.25,
+                                    "file":  "D:\\drone_thesis_clean\\runs\\scan_prod_v2_finish_timelate_ft300k\\gates\\robust_s3.json"
+                                }
+                            ],
+    "robust_winner_mean":  {
+                               "success_mean":  77,
+                               "success_min":  77,
+                               "crash_sum":  0,
+                               "coverage_mean":  0.88559722900390625,
+                               "coverage_min":  0.88543051481246948,
+                               "cov90_rate_mean":  0.52,
+                               "cov93_rate_mean":  0.38000000000000006,
+                               "cov95_rate_mean":  0.25
+                           }
+}

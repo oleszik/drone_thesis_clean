@@ -1,0 +1,42 @@
+[
+    {
+        "chunk":  1,
+        "success":  43,
+        "coverage":  0.810202,
+        "crash":  0,
+        "model":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_1\\best_model.zip",
+        "gate_json":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_1\\gates\\scan_A2_ABL_B125_T85_chunk1_e100_s456.json"
+    },
+    {
+        "chunk":  2,
+        "success":  37,
+        "coverage":  0.795551,
+        "crash":  0,
+        "model":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_2\\best_model.zip",
+        "gate_json":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_2\\gates\\scan_A2_ABL_B125_T85_chunk2_e100_s456.json"
+    },
+    {
+        "chunk":  3,
+        "success":  24,
+        "coverage":  0.792527,
+        "crash":  0,
+        "model":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_3\\best_model.zip",
+        "gate_json":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_3\\gates\\scan_A2_ABL_B125_T85_chunk3_e100_s456.json"
+    },
+    {
+        "chunk":  4,
+        "success":  28,
+        "coverage":  0.796914,
+        "crash":  0,
+        "model":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_4\\best_model.zip",
+        "gate_json":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_4\\gates\\scan_A2_ABL_B125_T85_chunk4_e100_s456.json"
+    },
+    {
+        "chunk":  5,
+        "success":  60,
+        "coverage":  0.831686,
+        "crash":  0,
+        "model":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_5\\best_model.zip",
+        "gate_json":  "runs\\scan_v36_cont_from_v35_gated1m\\chunk_5\\gates\\scan_A2_ABL_B125_T85_chunk5_e100_s456.json"
+    }
+]

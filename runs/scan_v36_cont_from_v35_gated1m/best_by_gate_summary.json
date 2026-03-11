@@ -1,0 +1,9 @@
+{
+    "best_source":  "v35_init",
+    "success_count":  69,
+    "coverage_mean":  0.85515511035919189,
+    "crash_count":  0,
+    "seed":  456,
+    "episodes":  100,
+    "preset":  "A2_ABL_B125_T85"
+}

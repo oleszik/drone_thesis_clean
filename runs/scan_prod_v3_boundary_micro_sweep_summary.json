@@ -1,0 +1,124 @@
+﻿{
+    "generated_utc":  "2026-02-27T08:18:19.8349366Z",
+    "base_model":  "runs/production_scan_v3/best_model.zip",
+    "base_robust":  {
+                        "success_mean":  78,
+                        "coverage_mean":  0.88821973403294885,
+                        "coverage_ge_095_rate_mean":  0.33,
+                        "crash_sum":  0
+                    },
+    "candidates_seed456":  [
+                               {
+                                   "run":  "scan_prod_v3_bnd015_act080_ft300k",
+                                   "cov95":  0.21,
+                                   "cov93":  0.3,
+                                   "cov90":  0.45,
+                                   "cov_mean":  0.865010142326355,
+                                   "success":  70,
+                                   "crash":  0,
+                                   "path":  "runs/scan_prod_v3_bnd015_act080_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "run":  "scan_prod_v3_bnd015_ft300k",
+                                   "cov95":  0.21,
+                                   "cov93":  0.27,
+                                   "cov90":  0.37,
+                                   "cov_mean":  0.85191833972930908,
+                                   "success":  61,
+                                   "crash":  0,
+                                   "path":  "runs/scan_prod_v3_bnd015_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "run":  "scan_prod_v3_bnd020_act080_ft300k",
+                                   "cov95":  0.21,
+                                   "cov93":  0.26,
+                                   "cov90":  0.31,
+                                   "cov_mean":  0.84013468027114868,
+                                   "success":  51,
+                                   "crash":  0,
+                                   "path":  "runs/scan_prod_v3_bnd020_act080_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "run":  "scan_prod_v3_bnd025_ft300k",
+                                   "cov95":  0.19,
+                                   "cov93":  0.29,
+                                   "cov90":  0.43,
+                                   "cov_mean":  0.8493306040763855,
+                                   "success":  62,
+                                   "crash":  0,
+                                   "path":  "runs/scan_prod_v3_bnd025_ft300k/gates/seed456_100eps.json"
+                               },
+                               {
+                                   "run":  "scan_prod_v3_bnd030_ft300k",
+                                   "cov95":  0.17,
+                                   "cov93":  0.25,
+                                   "cov90":  0.37,
+                                   "cov_mean":  0.84663885831832886,
+                                   "success":  64,
+                                   "crash":  0,
+                                   "path":  "runs/scan_prod_v3_bnd030_ft300k/gates/seed456_100eps.json"
+                               }
+                           ],
+    "selected_for_robust":  {
+                                "run":  "scan_prod_v3_bnd015_act080_ft300k",
+                                "cov95":  0.21,
+                                "cov93":  0.3,
+                                "cov90":  0.45,
+                                "cov_mean":  0.865010142326355,
+                                "success":  70,
+                                "crash":  0,
+                                "path":  "runs/scan_prod_v3_bnd015_act080_ft300k/gates/seed456_100eps.json"
+                            },
+    "selected_robust_per_seed":  [
+                                     {
+                                         "seed":  1,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov95":  0.24,
+                                         "cov93":  0.33,
+                                         "cov90":  0.5,
+                                         "cov_mean":  0.88150399923324585,
+                                         "path":  "runs/scan_prod_v3_bnd015_act080_ft300k/gates/robust_s1.json"
+                                     },
+                                     {
+                                         "seed":  2,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov95":  0.24,
+                                         "cov93":  0.33,
+                                         "cov90":  0.5,
+                                         "cov_mean":  0.88140404224395752,
+                                         "path":  "runs/scan_prod_v3_bnd015_act080_ft300k/gates/robust_s2.json"
+                                     },
+                                     {
+                                         "seed":  3,
+                                         "success":  75,
+                                         "crash":  0,
+                                         "cov95":  0.24,
+                                         "cov93":  0.33,
+                                         "cov90":  0.5,
+                                         "cov_mean":  0.8810039758682251,
+                                         "path":  "runs/scan_prod_v3_bnd015_act080_ft300k/gates/robust_s3.json"
+                                     }
+                                 ],
+    "selected_robust_mean":  {
+                                 "success_mean":  75,
+                                 "crash_sum":  0,
+                                 "cov95_mean":  0.24,
+                                 "cov93_mean":  0.33,
+                                 "cov90_mean":  0.5,
+                                 "cov_mean":  0.88130400578180945
+                             },
+    "selection_policy":  {
+                             "primary":  "coverage_ge_095_rate_mean_over_seeds",
+                             "tie_breakers":  [
+                                                  "coverage_mean_over_seeds",
+                                                  "success_mean_over_seeds",
+                                                  "crash_sum"
+                                              ]
+                         },
+    "recommendation":  {
+                           "keep_production_v3":  true,
+                           "reason":  "Micro-sweep candidate did not exceed production v3 on primary metric."
+                       }
+}

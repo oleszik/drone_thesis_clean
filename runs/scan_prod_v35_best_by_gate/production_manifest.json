@@ -1,0 +1,61 @@
+﻿{
+    "production_model":  "runs/scan_prod_v35_best_by_gate/best_model.zip",
+    "source_model":  "runs/scan_v35_b125_t85_from_v29_p1m/best_model.zip",
+    "source_run":  "runs/scan_v35_b125_t85_from_v29_p1m",
+    "preset":  "A2_ABL_B125_T85",
+    "frozen_utc":  "2026-02-27T04:29:59.7863514Z",
+    "gate_results":  [
+                         {
+                             "seed":  1,
+                             "episodes":  100,
+                             "success_count":  72,
+                             "crash_count":  0,
+                             "coverage_mean":  0.868379533290863,
+                             "overlap_mean":  16.314697265625,
+                             "time_to_95_mean":  2064.610107421875,
+                             "path":  "D:\\drone_thesis_clean\\runs\\scan_v35_b125_t85_from_v29_p1m\\gates\\scan_A2_ABL_B125_T85_scan_v35_b125_t85_from_v29_p1m_e100_s1.json"
+                         },
+                         {
+                             "seed":  2,
+                             "episodes":  100,
+                             "success_count":  72,
+                             "crash_count":  0,
+                             "coverage_mean":  0.86797958612442017,
+                             "overlap_mean":  16.356761932373047,
+                             "time_to_95_mean":  2064.610107421875,
+                             "path":  "D:\\drone_thesis_clean\\runs\\scan_v35_b125_t85_from_v29_p1m\\gates\\scan_A2_ABL_B125_T85_scan_v35_b125_t85_from_v29_p1m_e100_s2.json"
+                         },
+                         {
+                             "seed":  3,
+                             "episodes":  100,
+                             "success_count":  72,
+                             "crash_count":  0,
+                             "coverage_mean":  0.86797958612442017,
+                             "overlap_mean":  16.358200073242188,
+                             "time_to_95_mean":  2070.360107421875,
+                             "path":  "D:\\drone_thesis_clean\\runs\\scan_v35_b125_t85_from_v29_p1m\\gates\\scan_A2_ABL_B125_T85_scan_v35_b125_t85_from_v29_p1m_e100_s3.json"
+                         },
+                         {
+                             "seed":  456,
+                             "episodes":  100,
+                             "success_count":  69,
+                             "crash_count":  0,
+                             "coverage_mean":  0.85515511035919189,
+                             "overlap_mean":  15.695982933044434,
+                             "time_to_95_mean":  2026.1300048828125,
+                             "path":  "D:\\drone_thesis_clean\\runs\\scan_v35_b125_t85_from_v29_p1m\\gates\\scan_A2_ABL_B125_T85_scan_v35_b125_t85_from_v29_p1m_e100_s456.json"
+                         }
+                     ],
+    "robust_3seed":  {
+                         "seeds":  [
+                                       1,
+                                       2,
+                                       3
+                                   ],
+                         "success_mean":  72,
+                         "success_min":  72,
+                         "coverage_mean":  0.86811290184656775,
+                         "coverage_min":  0.86797958612442017,
+                         "crash_sum":  0
+                     }
+}

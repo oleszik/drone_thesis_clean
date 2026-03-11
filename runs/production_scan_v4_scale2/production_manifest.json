@@ -1,0 +1,54 @@
+﻿{
+    "model_path":  "D:\\drone_thesis_clean\\runs\\production_scan_v4_scale2\\best_model.zip",
+    "promoted_from_run":  "runs/scan_scale2_C_patch7_ft300k",
+    "preset":  "A2",
+    "selection_rule":  "Use this model when max(scan_path_len_scale, scan_path_len_scale_min, scan_path_len_scale_max) \u003e= 2.0",
+    "obs_aug":  {
+                    "enabled":  true,
+                    "patch_size":  7,
+                    "boundary_feat":  true,
+                    "global_coverage":  false,
+                    "global_size":  8
+                },
+    "step_scaling":  {
+                         "base_scan_max_steps":  2400,
+                         "effective_scan_max_steps":  4800,
+                         "path_len_scale":  2,
+                         "cap_hit_any":  false
+                     },
+    "robust_summary":  {
+                           "seeds":  [
+                                         1,
+                                         2,
+                                         3
+                                     ],
+                           "episodes_per_seed":  100,
+                           "success_rate_mean":  0.98000001907348644,
+                           "success_count_mean":  98,
+                           "crash_count_sum":  0,
+                           "coverage_mean":  0.9437369704246521,
+                           "coverage_min_mean":  0.60546875,
+                           "coverage_ge_095_rate_mean":  0.43333333333333335,
+                           "steps_mean":  554.09000651041663,
+                           "yaw_rate_abs_p95_mean":  0.59999990463256836,
+                           "dv_xy_mean":  0.13707653681437174,
+                           "scan_max_steps_base":  2400,
+                           "path_len_scale":  2,
+                           "scan_max_steps_eff":  4800,
+                           "scan_max_steps_cap_hit_any":  false,
+                           "files":  [
+                                         "runs\\production_scan_v4_scale2\\metrics\\gates\\scale2_auto_s1_100eps.json",
+                                         "runs\\production_scan_v4_scale2\\metrics\\gates\\scale2_auto_s2_100eps.json",
+                                         "runs\\production_scan_v4_scale2\\metrics\\gates\\scale2_auto_s3_100eps.json"
+                                     ]
+                       },
+    "seed456_gate":  {
+                         "note":  "not run in this pass"
+                     },
+    "metrics":  {
+                    "robust_summary_s123":  "runs/production_scan_v4_scale2/metrics/robust_summary_s123_scale2_auto.json",
+                    "gates_dir":  "runs/production_scan_v4_scale2/metrics/gates"
+                },
+    "promoted_utc":  "2026-02-28T02:43:37.4085070Z",
+    "git_commit_hash":  "026eafc98845dd8036ee0c9868b8df83fb018138"
+}

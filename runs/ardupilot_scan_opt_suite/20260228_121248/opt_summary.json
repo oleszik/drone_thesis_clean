@@ -1,0 +1,182 @@
+{
+  "created_at": "2026-02-28 12:13:06",
+  "out_dir": "runs\\ardupilot_scan_opt_suite\\20260228_121248",
+  "config": {
+    "conn": "udp:127.0.0.1:14550",
+    "model": "auto",
+    "preset": "A2",
+    "scan_path_len_scale": 2.0,
+    "bounds_m": [
+      40.0,
+      40.0
+    ],
+    "duration_s": 2.0,
+    "runs": 2,
+    "dry_run": 1
+  },
+  "arms": [
+    {
+      "arm": "A_baseline",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 0,
+        "adaptive_tracking": 0
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\A_baseline\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002748582230623819,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 1
+    },
+    {
+      "arm": "B_adaptive",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 0,
+        "adaptive_tracking": 1
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\B_adaptive\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002729678638941399,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 2
+    },
+    {
+      "arm": "C_lane",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 1,
+        "adaptive_tracking": 0
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\C_lane\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.0027485822306238185,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 3
+    },
+    {
+      "arm": "D_all",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 1,
+        "adaptive_tracking": 1
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\D_all\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.0026918714555765597,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 4
+    }
+  ],
+  "ranked": [
+    {
+      "arm": "A_baseline",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 0,
+        "adaptive_tracking": 0
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\A_baseline\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002748582230623819,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 1
+    },
+    {
+      "arm": "B_adaptive",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 0,
+        "adaptive_tracking": 1
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\B_adaptive\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.002729678638941399,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 2
+    },
+    {
+      "arm": "C_lane",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 1,
+        "adaptive_tracking": 0
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\C_lane\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.0027485822306238185,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 3
+    },
+    {
+      "arm": "D_all",
+      "config": {
+        "lookahead_enable": 1,
+        "step_sched_enable": 1,
+        "lane_keep_enable": 1,
+        "adaptive_tracking": 1
+      },
+      "returncode": 0,
+      "suite_summary_path": "runs\\ardupilot_scan_opt_suite\\20260228_121248\\D_all\\suite_summary.json",
+      "metrics": {
+        "coverage_mean": 0.0026918714555765597,
+        "cov95_hit_rate": 0.0,
+        "p95_dist_to_target": 25.320844122715712,
+        "clamp_rate_per_min": 0.0,
+        "oob_events": 0.0,
+        "mean_abs_cross_track": 0.0
+      },
+      "rank": 4
+    }
+  ],
+  "failures": 0
+}

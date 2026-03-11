@@ -1,0 +1,45 @@
+﻿{
+    "model_path":  "D:\\drone_thesis_clean\\runs\\production_scan_v4\\best_model.zip",
+    "promoted_from_run":  "runs\\scan_prod_v3_obsaug_ft300k",
+    "preset":  "A2_FINISH_TIMELATE_BOUNDARY",
+    "selection_primary_metric":  "coverage_ge_095_rate_mean_over_seeds",
+    "robust_summary":  {
+                           "success_rate_mean":  0.9700000286102296,
+                           "coverage_mean":  0.9764244556427002,
+                           "coverage_ge_095_rate_mean":  0.87,
+                           "crash_sum":  0,
+                           "seeds":  [
+                                         1,
+                                         2,
+                                         3
+                                     ]
+                       },
+    "seed456_gate":  {
+                         "success_count":  98,
+                         "crash_count":  0,
+                         "success_rate":  0.98000001907348644,
+                         "coverage_mean":  0.97240608930587757,
+                         "coverage_ge_095_rate":  0.86
+                     },
+    "obs_aug":  {
+                    "enabled":  true,
+                    "patch_size":  5,
+                    "boundary_feat":  true,
+                    "obs_dim":  42
+                },
+    "warm_start":  {
+                       "source_model":  "runs\\production_scan_v3\\best_model.zip",
+                       "method":  "partial_policy_warmstart_for_obs_mismatch",
+                       "copied_full_params":  11,
+                       "copied_partial_params":  2,
+                       "note":  "extra obs-aug input weights remained randomly initialized"
+                   },
+    "paired_diagnostic":  {
+                              "json_path":  "D:\\drone_thesis_clean\\runs\\production_scan_v4\\metrics\\paired_100eps_seed456.json",
+                              "baseline_hits_rl_misses":  73,
+                              "rl_cov95_rate":  0.27,
+                              "baseline_cov95_rate":  1
+                          },
+    "promoted_utc":  "2026-02-28T01:02:57.0269833Z",
+    "git_commit_hash":  "026eafc98845dd8036ee0c9868b8df83fb018138"
+}

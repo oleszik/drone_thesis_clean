@@ -1,0 +1,28 @@
+{
+  "base_model": "runs\\scan_prod_v35_best_by_gate\\best_model.zip",
+  "preset": "A2_ABL_B125_T85",
+  "timesteps": 300000,
+  "episodes": 100,
+  "seed_train": 123,
+  "seed_gate": 456,
+  "best_row": {
+    "candidate": "gain_0p012",
+    "model": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\best_model.zip",
+    "gate_json": "runs\\scan_v37_short_sweeps_from_v35\\gain_0p012\\gates\\gain_0p012_gate_seed456.json",
+    "overrides": {
+      "scan_cov_late_thresh": 0.85,
+      "scan_k_cov_gain_late": 0.01,
+      "scan_k_cov_stall": 0.0,
+      "scan_oob_grace_steps": 3,
+      "scan_k_cov_gain": 0.012,
+      "scan_debug_oob": false
+    },
+    "success_count": 70,
+    "crash_count": 0,
+    "coverage_mean": 0.870063304901123,
+    "coverage_min": 0.6600000262260437,
+    "time_to_95_mean": 1901.1600341796875
+  },
+  "best_model": "runs\\scan_v37_short_sweeps_from_v35\\best_by_gate_model.zip",
+  "all_results": "runs\\scan_v37_short_sweeps_from_v35\\sweep_gate_results.json"
+}

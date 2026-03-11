@@ -1,0 +1,18 @@
+{
+  "episodes": 200,
+  "seed_base": 456,
+  "success_count": 188,
+  "crash_count": 0,
+  "oob_touch_count": 2268,
+  "oob_touch_rate": 0.014767259397198909,
+  "oob_touch_episode_count": 8,
+  "oob_touch_episode_rate": 0.03999999910593033,
+  "success_rate_mean": 0.9399999976158142,
+  "success_rate_std": 0.2374868392944336,
+  "steps_mean": 767.9149780273438,
+  "steps_std": 83.74614715576172,
+  "mean_steps_success": 753.10107421875,
+  "std_steps_success": 61.672828674316406,
+  "crash_rate_mean": 0.0,
+  "crash_rate_std": 0.0
+}

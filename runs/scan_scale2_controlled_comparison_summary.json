@@ -1,0 +1,80 @@
+﻿{
+    "generated_at_utc":  "2026-02-28T02:29:34Z",
+    "experiment":  "controlled_scale_test_double_area",
+    "double_area_definition":  "scan_path_len_scale_min=max=2.0 (2x nominal path length)",
+    "episodes_per_gate":  100,
+    "rows":  [
+                 {
+                     "config":  "A_patch5_only",
+                     "run_dir":  "runs/scan_scale2_A_patch5_ft300k",
+                     "seed456":  {
+                                     "success_rate":  0.98000001907348644,
+                                     "success_count":  98,
+                                     "crash_count":  0,
+                                     "coverage_mean":  0.910546898841858,
+                                     "coverage_ge_095_rate":  0.18,
+                                     "yaw_rate_abs_p95":  0.59999978542327881,
+                                     "dv_xy_mean":  0.13413721323013306,
+                                     "steps_mean":  550.57000732421875
+                                 },
+                     "robust_mean_s1_s3":  {
+                                               "n_seeds":  3,
+                                               "success_rate_mean":  0.99000000953674316,
+                                               "coverage_mean":  0.91803385814030969,
+                                               "coverage_ge_095_rate":  0.16333333333333333,
+                                               "crash_count_mean":  0,
+                                               "yaw_rate_abs_p95":  0.59999984502792358,
+                                               "dv_xy_mean":  0.1273514578739802,
+                                               "steps_mean":  528.55000813802087
+                                           }
+                 },
+                 {
+                     "config":  "B_patch5_global8",
+                     "run_dir":  "runs/scan_scale2_B_patch5_global8_ft300k",
+                     "seed456":  {
+                                     "success_rate":  0.0099999997764825821,
+                                     "success_count":  1,
+                                     "crash_count":  0,
+                                     "coverage_mean":  0.75324219465255737,
+                                     "coverage_ge_095_rate":  0.03,
+                                     "yaw_rate_abs_p95":  0.59954851865768433,
+                                     "dv_xy_mean":  0.22945410013198853,
+                                     "steps_mean":  2379.6201171875
+                                 },
+                     "robust_mean_s1_s3":  {
+                                               "n_seeds":  3,
+                                               "success_rate_mean":  0.019999999552965164,
+                                               "coverage_mean":  0.72174479564030969,
+                                               "coverage_ge_095_rate":  0.04,
+                                               "crash_count_mean":  0,
+                                               "yaw_rate_abs_p95":  0.59948503971099854,
+                                               "dv_xy_mean":  0.23124614357948303,
+                                               "steps_mean":  2359.929931640625
+                                           }
+                 },
+                 {
+                     "config":  "C_patch7_only",
+                     "run_dir":  "runs/scan_scale2_C_patch7_ft300k",
+                     "seed456":  {
+                                     "success_rate":  0.98000001907348644,
+                                     "success_count":  98,
+                                     "crash_count":  0,
+                                     "coverage_mean":  0.944374978542328,
+                                     "coverage_ge_095_rate":  0.51,
+                                     "yaw_rate_abs_p95":  0.59999990463256836,
+                                     "dv_xy_mean":  0.12860853970050812,
+                                     "steps_mean":  516.69000244140625
+                                 },
+                     "robust_mean_s1_s3":  {
+                                               "n_seeds":  3,
+                                               "success_rate_mean":  0.98000001907348644,
+                                               "coverage_mean":  0.9437369704246521,
+                                               "coverage_ge_095_rate":  0.43333333333333335,
+                                               "crash_count_mean":  0,
+                                               "yaw_rate_abs_p95":  0.59999990463256836,
+                                               "dv_xy_mean":  0.12782798210779825,
+                                               "steps_mean":  506.08999633789063
+                                           }
+                 }
+             ]
+}
