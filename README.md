@@ -402,3 +402,7 @@ python -m scripts.train --task hover --preset A0
 - Gravity compensation is included so `vz_cmd=0` can hover.
 - Success always sets `terminated=True` for early episode end.
 - `quad_rl.utils.paths.normalize_model_path()` prevents `.zip.zip` path issues.
+
+## License
+
+MIT. See `LICENSE`.
