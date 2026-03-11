@@ -30,6 +30,53 @@ Syntax check:
 "D:\drone_thesis_clean\.venv\Scripts\python.exe" -m compileall "D:\drone_thesis_clean\quad_rl" "D:\drone_thesis_clean\scripts"
 ```
 
+## Web Dashboard (Backend + Frontend)
+
+Backend deps (same venv):
+
+```powershell
+"D:\drone_thesis_clean\.venv\Scripts\python.exe" -m pip install -r "D:\drone_thesis_clean\backend\requirements.txt"
+```
+
+Start backend (terminal 1):
+
+```powershell
+cd /d "D:\drone_thesis_clean" && "D:\drone_thesis_clean\.venv\Scripts\python.exe" -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Start frontend (terminal 2):
+
+```powershell
+cd /d "D:\drone_thesis_clean\frontend" && npm install && npm run dev
+```
+
+Open `http://127.0.0.1:5173`.
+
+Notes:
+
+- The dashboard frontend is managed from `frontend\package.json`.
+- The root `package.json` is not used to run the dashboard app.
+- Optional frontend override: set `VITE_BACKEND_BASE` before `npm run dev` if backend is not on `http://127.0.0.1:8000`.
+
+## Model Artifact Policy
+
+This repository tracks run configs/metrics/manifests broadly, but only a small set of baseline model checkpoints.
+
+Tracked baseline checkpoints:
+
+- `runs\sequence_a2_v9_oobtouch\best_model.zip`
+- `runs\production_scan\best_model.zip`
+- `runs\production_scan_v4\best_model.zip`
+- `runs\production_scan_v4_scale2\best_model.zip`
+- `runs\scan_prod_v35_best_by_gate\best_model.zip`
+
+Not tracked by default:
+
+- Other `runs/**/best_model.zip` and training zip artifacts.
+- TensorBoard/event streams (`tb`, `sb3_logs`, `*.jsonl`, `*.log`, `logs`, stdout dumps).
+
+Git LFS is not required for the tracked baseline checkpoints above.
+
 ## Current baselines
 
 - Sequence A2: `runs\sequence_a2_v9_oobtouch\best_model.zip`
