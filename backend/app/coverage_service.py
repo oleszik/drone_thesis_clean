@@ -124,6 +124,7 @@ class CoverageService:
         origin_lat: float | None = None,
         bounds_w_m: float | None = None,
         bounds_h_m: float | None = None,
+        cell_size_m: float | None = None,
         roi_polygon_lng_lat: list[list[float]] | None = None,
     ) -> dict[str, Any]:
         with self._lock:
@@ -132,6 +133,7 @@ class CoverageService:
                 or origin_lat is not None
                 or bounds_w_m is not None
                 or bounds_h_m is not None
+                or cell_size_m is not None
                 or roi_polygon_lng_lat is not None
             ):
                 if roi_polygon_lng_lat is not None:
@@ -141,7 +143,7 @@ class CoverageService:
                     origin_lat=float(origin_lat) if origin_lat is not None else self._cfg.origin_lat,
                     bounds_w_m=float(bounds_w_m) if bounds_w_m is not None else self._cfg.bounds_w_m,
                     bounds_h_m=float(bounds_h_m) if bounds_h_m is not None else self._cfg.bounds_h_m,
-                    cell_size_m=self._cfg.cell_size_m,
+                    cell_size_m=max(0.5, float(cell_size_m)) if cell_size_m is not None else self._cfg.cell_size_m,
                     footprint_radius_m=self._cfg.footprint_radius_m,
                 )
                 self._rebuild_grid()

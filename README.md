@@ -34,11 +34,51 @@ npm install
 npm run dev
 ```
 
+Optional desktop shell (new terminal, Electron wrapper around the same frontend/backend):
+
+```bash
+cd desktop
+npm install
+npm run dev
+```
+
 5. Run SITL bridge repeat-eval example
 
 ```bash
 python -m scripts.bridge_repeat_eval --dry-run 1 --runs 3 --model runs/production_scan_v4_scale2/best_model.zip --task scan --preset A2 --scale 2.0 --bounds 40 40 --alt 10
 ```
+
+## Requirements
+
+- Python `>=3.10` (see `pyproject.toml`)
+- Node.js + npm (required for `frontend/` and `desktop/`)
+- Python dependencies:
+  - `pip install -r requirements.txt`
+  - `pip install -r backend/requirements.txt`
+- Optional for SITL workflow: ArduPilot SITL and QGroundControl
+
+## Important Commands
+
+Core development commands:
+
+```bash
+# backend
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# frontend
+cd frontend && npm install && npm run dev -- --host 127.0.0.1 --port 5173
+
+# desktop shell
+cd desktop && npm install && npm run dev
+
+# bridge dry run
+python -m scripts.ardupilot_bridge --dry-run 1 --model auto --task scan --preset A2 --scan-path-len-scale 2.0 --steps 50 --rate-hz 5.0
+
+# gate dry run
+python -m scripts.ardupilot_scan_gate --dry-run 1 --conn udp:127.0.0.1:14550 --model auto --preset A2 --scan-path-len-scale 2.0 --bounds-m 40 40 --alt-m 10 --duration-s 120
+```
+
+Extended command cookbook (Linux/Windows/SITL/Desktop): `IMPORTANT_COMMANDS.txt`.
 
 ## System Architecture
 
@@ -123,6 +163,40 @@ Notes:
 - The dashboard frontend is managed from `frontend\package.json`.
 - The root `package.json` is not used to run the dashboard app.
 - Optional frontend override: set `VITE_BACKEND_BASE` before `npm run dev` if backend is not on `http://127.0.0.1:8000`.
+
+## Desktop Shell
+
+A first-pass Electron desktop shell now lives in `desktop/`.
+
+What it does:
+
+- opens the dashboard in a native desktop window
+- keeps the React frontend as the UI layer
+- keeps FastAPI as the backend/service layer
+- starts the backend automatically when needed
+- still preserves the old browser-based workflow
+
+Development example on Ubuntu:
+
+Terminal 1:
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Terminal 2:
+
+```bash
+cd desktop
+npm install
+npm run dev
+```
+
+The desktop shell checks `http://127.0.0.1:8000/api/health` and will launch the backend itself if it is not already running.
+
+More detail is in [docs/desktop_shell.md](/home/oleszik/Documents/Github-Repos/drone_thesis_clean/docs/desktop_shell.md).
 
 ## Model Artifact Policy
 
@@ -405,4 +479,5 @@ python -m scripts.train --task hover --preset A0
 
 ## License
 
-MIT. See `LICENSE`.
+This repository is source-available for non-commercial use only. Commercial
+use is not allowed without prior written permission. See `LICENSE`.

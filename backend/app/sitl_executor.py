@@ -32,7 +32,9 @@ class SitlExecutor:
         self._last_error = ""
         self._alt_m = 10.0
         self._accept_radius_m = 3.0
+        self._speed_m_s = 3.0
         self._waypoints: list[list[float]] = []
+        self._waypoint_meta: list[dict[str, Any]] = []
         self._wp_idx = 0
 
     def _set_state(self, state: str) -> None:
@@ -58,6 +60,8 @@ class SitlExecutor:
                 raise ValueError("MAVLink not connected")
             payload = self._mission.get_path()
             waypoints = payload.get("waypoints_lng_lat") or []
+            waypoint_meta = payload.get("waypoint_meta") or []
+            cfg = payload.get("config") or {}
             if len(waypoints) < 2:
                 raise ValueError("no generated scan path")
             tele = self._mav.get_telemetry()
@@ -73,10 +77,22 @@ class SitlExecutor:
                         "Restart SITL with --custom-location near your scan area."
                     )
             self._waypoints = [list(w) for w in waypoints]
-            self._alt_m = max(1.0, float(alt_m))
+            self._waypoint_meta = [dict(item) for item in waypoint_meta]
+            initial_alt = alt_m
+            if self._waypoint_meta:
+                meta_alt = self._waypoint_meta[0].get("altitude_m")
+                if meta_alt is not None:
+                    try:
+                        initial_alt = float(meta_alt)
+                    except Exception:
+                        initial_alt = alt_m
+            self._alt_m = max(1.0, float(initial_alt))
             self._accept_radius_m = max(0.5, float(accept_radius_m))
+            self._speed_m_s = max(0.2, float(cfg.get("speed_m_s") or 3.0))
             self._last_error = ""
-            self._wp_idx = 1
+            # Start from the explicit mission start waypoint so ArduPilot
+            # execution respects the start point selected in the dashboard.
+            self._wp_idx = 0
             self._scan_active = True
             self._set_state("ARMING")
             self._stop_evt.clear()
@@ -112,11 +128,24 @@ class SitlExecutor:
                 "waypoint_count": int(len(self._waypoints)),
                 "alt_m": float(self._alt_m),
                 "accept_radius_m": float(self._accept_radius_m),
+                "speed_m_s": float(self._speed_m_s),
                 "last_error": self._last_error,
             }
 
     def _run(self) -> None:
         try:
+            start_lng = float(self._waypoints[0][0])
+            start_lat = float(self._waypoints[0][1])
+            tele0 = self._mav.get_telemetry()
+            home_alt = tele0.get("alt_m")
+            if home_alt is None and tele0.get("rel_alt_m") is not None:
+                home_alt = float(tele0.get("rel_alt_m") or 0.0)
+            try:
+                self._mav.set_home(lng=start_lng, lat=start_lat, alt_m=home_alt)
+            except Exception:
+                # SITL start still works without a home update; this is best-effort.
+                pass
+
             self._mav.set_mode("GUIDED")
             self._mav.arm()
             if not self._wait_until(lambda: bool(self._mav.get_status().get("armed")), timeout_s=20.0):
@@ -132,6 +161,11 @@ class SitlExecutor:
             ):
                 raise RuntimeError("takeoff timeout")
 
+            try:
+                self._mav.set_speed(self._speed_m_s)
+            except Exception:
+                pass
+
             with self._lock:
                 self._set_state("RUN_PATH")
 
@@ -142,11 +176,18 @@ class SitlExecutor:
                     if self._wp_idx >= len(self._waypoints):
                         break
                     tgt = self._waypoints[self._wp_idx]
+                    meta = self._waypoint_meta[self._wp_idx] if self._wp_idx < len(self._waypoint_meta) else {}
                     accept_r = self._accept_radius_m
-                    alt = self._alt_m
+                    alt = max(1.0, float(meta.get("altitude_m") or self._alt_m))
 
                 lng_t, lat_t = float(tgt[0]), float(tgt[1])
-                self._mav.goto_location(lng=lng_t, lat=lat_t, alt_rel_m=alt)
+                yaw_deg = meta.get("yaw_deg")
+                self._mav.goto_location(
+                    lng=lng_t,
+                    lat=lat_t,
+                    alt_rel_m=alt,
+                    yaw_deg=(float(yaw_deg) if yaw_deg is not None else None),
+                )
 
                 tele = self._mav.get_telemetry()
                 lng = tele.get("lon")

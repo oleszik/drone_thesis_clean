@@ -3,7 +3,7 @@ Drone Thesis - Important Commands
 
 Repo
 ----
-cd /mnt/data/drone_thesis_clean
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
 
 Python env (Linux)
 ------------------
@@ -55,7 +55,7 @@ Tools/autotest/sim_vehicle.py -v ArduCopter --console --map \
 
 Run bridge (real SITL)
 ----------------------
-cd /mnt/data/drone_thesis_clean
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
 source .venv/bin/activate
 python -m scripts.ardupilot_bridge \
   --dry-run 0 \
@@ -113,7 +113,7 @@ Tools/autotest/sim_vehicle.py -w -v ArduCopter --console --map \
 Website (Current: React + FastAPI + Tencent map via backend tile proxy)
 ------------------------------------------------------------------------
 # Backend env (one-time)
-cd /mnt/data/drone_thesis_clean
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
 python3 -m venv .venv-web
 source .venv-web/bin/activate
 python -m pip install --upgrade pip
@@ -127,7 +127,7 @@ MAVLINK_URL=udpin:0.0.0.0:14551
 EOF
 
 # Frontend deps (one-time)
-cd /mnt/data/drone_thesis_clean/frontend
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/frontend
 npm install
 
 # Frontend .env.local (one-time; used by Vite)
@@ -136,16 +136,47 @@ VITE_BACKEND_BASE=http://127.0.0.1:8000
 EOF
 
 # Backend run
-cd /mnt/data/drone_thesis_clean
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
 source .venv-web/bin/activate
 uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 
 # Frontend (Vite + React) in second terminal
-cd /mnt/data/drone_thesis_clean/frontend
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/frontend
 npm run dev -- --host 127.0.0.1 --port 5173
 
 # Open in browser
 # http://127.0.0.1:5173
+
+Desktop App (Electron shell)
+----------------------------
+# Desktop deps (one-time)
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/desktop
+npm install
+
+# Start desktop app while frontend dev server is already running
+# Use this on Linux/WSL if regular Electron sandboxing fails.
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/desktop
+unset ELECTRON_RUN_AS_NODE
+ELECTRON_DISABLE_SANDBOX=1 npx electron .
+
+# Alternative npm script attempt
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/desktop
+npm run dev
+
+# Full desktop dev flow (3 terminals)
+# Terminal 1: backend
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
+source .venv-web/bin/activate
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2: frontend
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+
+# Terminal 3: desktop app
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/desktop
+unset ELECTRON_RUN_AS_NODE
+ELECTRON_DISABLE_SANDBOX=1 npx electron .
 
 # API quick checks
 curl -s http://127.0.0.1:8000/api/health | jq

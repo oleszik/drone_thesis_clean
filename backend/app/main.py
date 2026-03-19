@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import logging
 import math
 import ssl
@@ -8,9 +7,9 @@ import time
 import urllib.request
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from .config import load_config
@@ -18,6 +17,7 @@ from .coverage_service import CoverageConfig, CoverageService
 from .mavlink_service import MavlinkService, MavlinkSettings
 from .mission_service import MissionService
 from .run_manager import RunManager
+from .sse import encode_sse, encode_sse_comment, sleep_or_disconnect, stable_json
 from .sitl_executor import SitlExecutor
 
 
@@ -38,10 +38,28 @@ class MissionStartRequest(BaseModel):
     lat: float
 
 
+class MissionOrbitLayerRequest(BaseModel):
+    altitude_m: float
+    laps: int = 1
+
+
+class MissionOrbitGenerateRequest(BaseModel):
+    radius_m: float = 12.0
+    altitude_m: float = 10.0
+    laps: int = 1
+    points_per_lap: int = 24
+    clockwise: bool = True
+    yaw_to_center: bool = True
+    speed_m_s: float = 3.0
+    start_scan: bool = False
+    layers: list[MissionOrbitLayerRequest] | None = None
+
+
 class MissionGenerateRequest(BaseModel):
     spacing_m: float = 8.0
     speed_m_s: float = 3.0
     start_scan: bool = False
+    auto_spacing: bool = False
 
 
 class SimTickRequest(BaseModel):
@@ -61,6 +79,12 @@ class RunStartRequest(BaseModel):
 
 class RunNotesRequest(BaseModel):
     notes: str = ""
+
+
+def _model_to_dict(model: BaseModel) -> dict[str, object]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()
 
 
 def create_app() -> FastAPI:
@@ -113,6 +137,41 @@ def create_app() -> FastAPI:
             "map_state": map_state(),
         }
 
+    def _bridge_state_payload() -> dict[str, object]:
+        return {
+            "status": mav.get_status(),
+            "map_state": map_state(),
+            "mission_path": mission.get_path(),
+            "mission_sim": mission.get_sim_state(),
+            "sitl_state": sitl.get_state(),
+            "run": runs.current(),
+        }
+
+    def _coverage_payload() -> dict[str, object]:
+        return {
+            "coverage": coverage.get_coverage(),
+            "scan_debug": coverage.get_scan_debug(),
+        }
+
+    def _track_delta_payload(last_t_unix: float | None, limit: int = 600) -> tuple[dict[str, object] | None, float | None]:
+        items = mav.get_track(limit=limit)
+        if last_t_unix is None:
+            latest = float(items[-1]["t_unix"]) if items else None
+            return {
+                "reset": True,
+                "items": items,
+                "latest_t_unix": latest,
+            }, latest
+        delta = [item for item in items if float(item.get("t_unix", 0.0)) > float(last_t_unix)]
+        if not delta:
+            return None, last_t_unix
+        latest = float(delta[-1]["t_unix"])
+        return {
+            "reset": False,
+            "items": delta,
+            "latest_t_unix": latest,
+        }, latest
+
     def _meters_to_deg_lat(m: float) -> float:
         return float(m) / 111320.0
 
@@ -125,6 +184,12 @@ def create_app() -> FastAPI:
 
     def _meters_between_lat(lat1: float, lat2: float) -> float:
         return abs(float(lat2) - float(lat1)) * 111320.0
+
+    def _recommended_coverage_cell_size(bounds_w_m: float, bounds_h_m: float) -> float:
+        area_m2 = max(1.0, float(bounds_w_m) * float(bounds_h_m))
+        footprint_floor = max(1.0, float(cfg.coverage_footprint_radius_m) * 0.35)
+        density_floor = math.sqrt(area_m2 / 18000.0)
+        return min(float(cfg.coverage_cell_size_m), max(footprint_floor, density_floor))
 
     def _reset_coverage_for_mission() -> None:
         mission_payload = mission.get_path()
@@ -140,11 +205,13 @@ def create_app() -> FastAPI:
             width_m = _meters_between_lng(min_lng, max_lng, center_lat)
             height_m = _meters_between_lat(min_lat, max_lat)
             margin_m = max(15.0, 2.0 * float(cfg.coverage_footprint_radius_m))
+            cell_size_m = _recommended_coverage_cell_size(width_m, height_m)
             coverage.reset(
                 origin_lng=center_lng,
                 origin_lat=center_lat,
                 bounds_w_m=max(20.0, width_m + 2.0 * margin_m),
                 bounds_h_m=max(20.0, height_m + 2.0 * margin_m),
+                cell_size_m=cell_size_m,
                 roi_polygon_lng_lat=[[float(p[0]), float(p[1])] for p in area_poly if isinstance(p, (list, tuple)) and len(p) >= 2],
             )
             return
@@ -152,6 +219,7 @@ def create_app() -> FastAPI:
             coverage.reset(
                 origin_lng=float(waypoints[0][0]),
                 origin_lat=float(waypoints[0][1]),
+                cell_size_m=min(float(cfg.coverage_cell_size_m), max(1.0, float(cfg.coverage_footprint_radius_m) * 0.35)),
                 roi_polygon_lng_lat=None,
             )
             return
@@ -217,6 +285,102 @@ def create_app() -> FastAPI:
     @app.get("/api/telemetry")
     def telemetry() -> dict[str, object]:
         return mav.get_telemetry()
+
+    @app.get("/api/stream/telemetry")
+    async def stream_telemetry(request: Request) -> StreamingResponse:
+        async def gen():
+            seq = 0
+            while True:
+                if await request.is_disconnected():
+                    break
+                payload = {
+                    "status": mav.get_status(),
+                    "telemetry": mav.get_telemetry(),
+                }
+                seq += 1
+                yield encode_sse(data=payload, event="telemetry", event_id=str(seq))
+                if await sleep_or_disconnect(request, 0.2):
+                    break
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    @app.get("/api/stream/bridge_state")
+    async def stream_bridge_state(request: Request) -> StreamingResponse:
+        async def gen():
+            seq = 0
+            last = ""
+            while True:
+                if await request.is_disconnected():
+                    break
+                payload = _bridge_state_payload()
+                current = stable_json(payload)
+                if current != last:
+                    last = current
+                    seq += 1
+                    yield encode_sse(data=payload, event="bridge_state", event_id=str(seq))
+                else:
+                    yield encode_sse_comment("bridge_state")
+                if await sleep_or_disconnect(request, 1.0):
+                    break
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    @app.get("/api/stream/coverage")
+    async def stream_coverage(request: Request) -> StreamingResponse:
+        async def gen():
+            seq = 0
+            last = ""
+            while True:
+                if await request.is_disconnected():
+                    break
+                payload = _coverage_payload()
+                current = stable_json(payload)
+                if current != last:
+                    last = current
+                    seq += 1
+                    yield encode_sse(data=payload, event="coverage", event_id=str(seq))
+                else:
+                    yield encode_sse_comment("coverage")
+                if await sleep_or_disconnect(request, 1.0):
+                    break
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    @app.get("/api/stream/track")
+    async def stream_track(request: Request, limit: int = 600) -> StreamingResponse:
+        async def gen():
+            seq = 0
+            last_t_unix: float | None = None
+            while True:
+                if await request.is_disconnected():
+                    break
+                payload, last_t_unix_next = _track_delta_payload(last_t_unix, limit=limit)
+                if payload is not None:
+                    last_t_unix = last_t_unix_next
+                    seq += 1
+                    yield encode_sse(data=payload, event="track", event_id=str(seq))
+                else:
+                    yield encode_sse_comment("track")
+                if await sleep_or_disconnect(request, 0.5):
+                    break
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
 
     @app.get("/api/map_state")
     def map_state() -> dict[str, object]:
@@ -300,6 +464,12 @@ def create_app() -> FastAPI:
         runs.log("MISSION_START_SET", {"lng": req.lng, "lat": req.lat})
         return out
 
+    @app.post("/api/mission/orbit_center")
+    def mission_orbit_center(req: MissionStartRequest) -> dict[str, object]:
+        out = mission.set_orbit_center(req.lng, req.lat)
+        runs.log("MISSION_ORBIT_CENTER_SET", {"lng": req.lng, "lat": req.lat})
+        return out
+
     @app.post("/api/mission/generate_scan")
     def mission_generate_scan(req: MissionGenerateRequest) -> dict[str, object]:
         try:
@@ -307,8 +477,49 @@ def create_app() -> FastAPI:
                 spacing_m=req.spacing_m,
                 speed_m_s=req.speed_m_s,
                 start_scan=req.start_scan,
+                auto_spacing=req.auto_spacing,
             )
-            runs.log("MISSION_PATH_GENERATED", {"spacing_m": req.spacing_m, "speed_m_s": req.speed_m_s})
+            runs.log(
+                "MISSION_PATH_GENERATED",
+                {
+                    "requested_spacing_m": req.spacing_m,
+                    "resolved_spacing_m": (out.get("config") or {}).get("spacing_m"),
+                    "speed_m_s": req.speed_m_s,
+                    "auto_spacing": req.auto_spacing,
+                },
+            )
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/api/mission/generate_orbit_scan")
+    def mission_generate_orbit_scan(req: MissionOrbitGenerateRequest) -> dict[str, object]:
+        try:
+            layer_payload = [_model_to_dict(layer) for layer in req.layers] if req.layers else None
+            out = mission.generate_orbit_scan(
+                radius_m=req.radius_m,
+                altitude_m=req.altitude_m,
+                laps=req.laps,
+                points_per_lap=req.points_per_lap,
+                clockwise=req.clockwise,
+                yaw_to_center=req.yaw_to_center,
+                speed_m_s=req.speed_m_s,
+                start_scan=req.start_scan,
+                layers=layer_payload,
+            )
+            runs.log(
+                "MISSION_ORBIT_GENERATED",
+                {
+                    "radius_m": req.radius_m,
+                    "altitude_m": req.altitude_m,
+                    "laps": req.laps,
+                    "layers": layer_payload,
+                    "points_per_lap": req.points_per_lap,
+                    "clockwise": req.clockwise,
+                    "yaw_to_center": req.yaw_to_center,
+                    "speed_m_s": req.speed_m_s,
+                },
+            )
             return out
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
@@ -319,7 +530,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/mission/clear")
     def mission_clear() -> dict[str, object]:
+        try:
+            sitl.stop_scan()
+        except Exception:
+            pass
         out = mission.clear()
+        coverage.reset()
         runs.log("MISSION_CLEARED", out)
         return out
 

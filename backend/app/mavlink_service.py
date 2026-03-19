@@ -150,7 +150,75 @@ class MavlinkService:
         self.set_mode("RTL")
         return {"ok": True, "action": "rtl"}
 
-    def goto_location(self, lng: float, lat: float, alt_rel_m: float) -> dict[str, Any]:
+    def set_speed(self, speed_m_s: float) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        master = self._require_master()
+        speed = max(0.2, float(speed_m_s))
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED,
+            0,
+            1,
+            speed,
+            -1,
+            0,
+            0,
+            0,
+            0,
+        )
+        return {"ok": True, "action": "set_speed", "speed_m_s": speed}
+
+    def set_yaw(self, yaw_deg: float, yaw_rate_deg_s: float = 30.0, clockwise: bool | None = None) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        master = self._require_master()
+        yaw = float(yaw_deg) % 360.0
+        yaw_rate = max(1.0, float(yaw_rate_deg_s))
+        direction = 0
+        if clockwise is True:
+            direction = 1
+        elif clockwise is False:
+            direction = -1
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_CMD_CONDITION_YAW,
+            0,
+            yaw,
+            yaw_rate,
+            direction,
+            0,
+            0,
+            0,
+            0,
+        )
+        return {"ok": True, "action": "set_yaw", "yaw_deg": yaw, "yaw_rate_deg_s": yaw_rate}
+
+    def set_home(self, lng: float, lat: float, alt_m: float | None = None) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        master = self._require_master()
+        alt = max(0.0, float(alt_m or 0.0))
+        master.mav.command_int_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_FRAME_GLOBAL,
+            mavutil.mavlink.MAV_CMD_DO_SET_HOME,
+            0,
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            int(float(lat) * 1e7),
+            int(float(lng) * 1e7),
+            alt,
+        )
+        return {"ok": True, "action": "set_home", "lng": float(lng), "lat": float(lat), "alt_m": alt}
+
+    def goto_location(self, lng: float, lat: float, alt_rel_m: float, yaw_deg: float | None = None) -> dict[str, Any]:
         if mavutil is None:
             raise RuntimeError("pymavlink is not installed")
         master = self._require_master()
@@ -165,9 +233,13 @@ class MavlinkService:
             | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE
             | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE
             | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE
             | mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
         )
+        yaw_rad = 0.0
+        if yaw_deg is None:
+            type_mask |= mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE
+        else:
+            yaw_rad = math.radians(float(yaw_deg) % 360.0)
         master.mav.set_position_target_global_int_send(
             0,
             master.target_system,
@@ -183,10 +255,17 @@ class MavlinkService:
             0.0,
             0.0,
             0.0,
-            0.0,
+            yaw_rad,
             0.0,
         )
-        return {"ok": True, "action": "goto", "lng": float(lng), "lat": float(lat), "alt_rel_m": alt}
+        return {
+            "ok": True,
+            "action": "goto",
+            "lng": float(lng),
+            "lat": float(lat),
+            "alt_rel_m": alt,
+            "yaw_deg": None if yaw_deg is None else float(yaw_deg) % 360.0,
+        }
 
     def _require_master(self) -> Any:
         with self._lock:
