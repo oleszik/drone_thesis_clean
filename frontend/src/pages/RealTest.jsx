@@ -1,0 +1,543 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLiveStream } from "../hooks/useLiveStream";
+import { MapPanel } from "../MapPanel";
+
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || "http://127.0.0.1:8000";
+
+async function fetchJson(path, init) {
+  const resp = await fetch(`${BACKEND_BASE}${path}`, init);
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const detail = payload?.detail ? String(payload.detail) : `HTTP ${resp.status}`;
+    throw new Error(detail);
+  }
+  return payload;
+}
+
+function toneFromReady(readiness) {
+  if (readiness?.overall_ready) return "good";
+  if (readiness?.can_manual) return "warn";
+  return "bad";
+}
+
+function bannerLabel(readiness) {
+  if (readiness?.overall_ready) return "Ready for tiny mission";
+  if (readiness?.can_manual) return "Manual only";
+  return "Autonomy blocked";
+}
+
+function fmt(v, suffix = "") {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return "--";
+  return `${Number(v).toFixed(1)}${suffix}`;
+}
+
+export function RealTest() {
+  const [readiness, setReadiness] = useState({
+    overall_ready: false,
+    can_manual: false,
+    can_autonomous: false,
+    checks: [],
+    blocking_reasons: [],
+    timestamp: null,
+  });
+  const [loadError, setLoadError] = useState("");
+  const [status, setStatus] = useState({ mode: "UNKNOWN", armed: false, connected: false, failsafes: { gps_ok: false, ekf_ok: false } });
+  const [telemetry, setTelemetry] = useState({ battery_percent: null, updated_at_unix: null });
+  const [actionMsg, setActionMsg] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [radioPorts, setRadioPorts] = useState([]);
+  const [radioStatus, setRadioStatus] = useState({
+    serial_port: "",
+    serial_baud: 57600,
+    connected: false,
+    last_heartbeat_age_s: null,
+    last_telemetry_age_s: null,
+    stale: false,
+    lost: true,
+    state: "disconnected",
+    error_message: "",
+  });
+  const [serialPort, setSerialPort] = useState("");
+  const [serialBaud, setSerialBaud] = useState(57600);
+  const [showHealthyChecks, setShowHealthyChecks] = useState(false);
+  const [showAllStatus, setShowAllStatus] = useState(false);
+  const [planningState, setPlanningState] = useState({
+    geometryValid: false,
+    hasPath: false,
+    areaM2: 0,
+    perimeterM: 0,
+    routeLengthM: 0,
+    fenceConfigured: false,
+    missionInsideFence: false,
+    validForMissionAction: false,
+  });
+
+  const onTelemetryStream = useCallback((payload) => {
+    if (payload?.status) {
+      setStatus((prev) => ({ ...prev, ...payload.status }));
+    }
+    if (payload?.telemetry) {
+      setTelemetry((prev) => ({ ...prev, ...payload.telemetry }));
+    }
+  }, []);
+
+  const telemetryStream = useLiveStream("/api/real/stream/telemetry", {
+    event: "telemetry",
+    onMessage: onTelemetryStream,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    async function poll() {
+      try {
+  const payload = await fetchJson("/api/real/readiness");
+        if (!cancelled) {
+          setReadiness(payload);
+          setLoadError("");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(String(err));
+        }
+      }
+      if (!cancelled) timer = window.setTimeout(poll, 1500);
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    async function pollRadio() {
+      try {
+        const [portsResp, statusResp] = await Promise.all([
+          fetchJson("/api/real/connection/ports"),
+          fetchJson("/api/real/connection/status"),
+        ]);
+        if (cancelled) return;
+        const ports = Array.isArray(portsResp?.ports) ? portsResp.ports : [];
+        setRadioPorts(ports);
+        setRadioStatus((prev) => ({ ...prev, ...(statusResp || {}) }));
+        if (!serialPort) {
+          const current = statusResp?.serial_port;
+          const firstPort = ports[0]?.port;
+          if (current) setSerialPort(String(current));
+          else if (firstPort) setSerialPort(String(firstPort));
+        }
+      } catch {
+        if (!cancelled) {
+          setRadioStatus((prev) => ({ ...prev, connected: false, state: "disconnected" }));
+        }
+      }
+      if (!cancelled) timer = window.setTimeout(pollRadio, 2000);
+    }
+
+    pollRadio();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [serialPort]);
+
+  const checksByKey = useMemo(() => {
+    const out = {};
+    for (const c of readiness.checks || []) {
+      if (c?.key) out[c.key] = c;
+    }
+    return out;
+  }, [readiness.checks]);
+
+  const bannerTone = toneFromReady(readiness);
+
+  const liveCards = useMemo(() => {
+    const hb = checksByKey.heartbeat_age_sec?.value;
+    return [
+      { label: "Mode", value: status.mode || "UNKNOWN", tone: "neutral" },
+      { label: "Armed", value: status.armed ? "YES" : "NO", tone: status.armed ? "warn" : "good" },
+      { label: "GPS", value: checksByKey.gps_ok?.ok ? "OK" : "BAD", tone: checksByKey.gps_ok?.ok ? "good" : "bad" },
+      { label: "EKF", value: checksByKey.ekf_ok?.ok ? "OK" : "BAD", tone: checksByKey.ekf_ok?.ok ? "good" : "bad" },
+      {
+        label: "Battery",
+        value: fmt(telemetry.battery_percent, "%"),
+        tone: checksByKey.battery_ok?.ok ? "good" : "warn",
+      },
+      { label: "RC Link", value: checksByKey.rc_link_ok?.ok ? "OK" : "UNKNOWN", tone: checksByKey.rc_link_ok?.ok ? "good" : "warn" },
+      { label: "Home", value: checksByKey.home_position_set?.ok ? "SET" : "NOT SET", tone: checksByKey.home_position_set?.ok ? "good" : "bad" },
+      { label: "Fence", value: checksByKey.fence_configured?.ok ? "CONFIGURED" : "MISSING", tone: checksByKey.fence_configured?.ok ? "good" : "bad" },
+      {
+        label: "Heartbeat",
+        value: hb === null || hb === undefined ? "--" : `${Number(hb).toFixed(2)}s`,
+        tone: checksByKey.heartbeat_age_sec?.ok ? "good" : "bad",
+      },
+    ];
+  }, [checksByKey, status.armed, status.mode, telemetry.battery_percent]);
+
+  const primaryLiveCards = useMemo(() => {
+    const priority = new Set(["Mode", "Armed", "Battery", "GPS", "EKF", "Heartbeat"]);
+    return liveCards.filter((c) => priority.has(c.label));
+  }, [liveCards]);
+
+  const groupedChecks = useMemo(() => {
+    const checks = Array.isArray(readiness.checks) ? readiness.checks : [];
+    const critical = checks.filter((c) => !c?.ok && (c?.severity === "critical" || c?.severity === "warning"));
+    const warnings = checks.filter((c) => c?.ok && c?.severity === "warning");
+    const healthy = checks.filter((c) => c?.ok && c?.severity !== "warning");
+    return { critical, warnings, healthy };
+  }, [readiness.checks]);
+
+  const runControlAction = useCallback(
+    async (path, label, confirmText = "") => {
+      if (confirmText && !window.confirm(confirmText)) return;
+      setActionBusy(true);
+      setActionMsg(`Sending ${label}...`);
+      try {
+        const payload = await fetchJson(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const modeHint = payload?.resulting_mode ? ` (mode: ${payload.resulting_mode})` : "";
+        setActionMsg(`OK: ${label}${modeHint}`);
+      } catch (err) {
+        setActionMsg(`Error: ${String(err)}`);
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [],
+  );
+
+  const runTinyMissionPreset = useCallback(async () => {
+    if (!window.confirm("Generate Tiny Mission preset now? (takeoff/hold/forward/hold/RTL)")) return;
+    setActionBusy(true);
+    setActionMsg("Generating Tiny Mission...");
+    try {
+  const payload = await fetchJson("/api/real/mission/generate_tiny", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const waypointCount = (payload?.waypoints_lng_lat || []).length;
+      setActionMsg(`OK: Tiny Mission ready (${waypointCount} waypoints)`);
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, []);
+
+  const connectRadio = useCallback(async () => {
+    setActionBusy(true);
+    setActionMsg("Connecting radio...");
+    try {
+      const payload = await fetchJson("/api/real/connection/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serial_port: serialPort, serial_baud: Number(serialBaud) }),
+      });
+      setActionMsg(`OK: radio connect (${payload?.serial_port || serialPort})`);
+      const statusPayload = await fetchJson("/api/real/connection/status");
+      setRadioStatus((prev) => ({ ...prev, ...(statusPayload || {}) }));
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, [serialBaud, serialPort]);
+
+  const disconnectRadio = useCallback(async () => {
+    setActionBusy(true);
+    setActionMsg("Disconnecting radio...");
+    try {
+      await fetchJson("/api/real/connection/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setActionMsg("OK: radio disconnected");
+      const statusPayload = await fetchJson("/api/real/connection/status");
+      setRadioStatus((prev) => ({ ...prev, ...(statusPayload || {}) }));
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, []);
+
+  const testHeartbeat = useCallback(async () => {
+    setActionBusy(true);
+    setActionMsg("Heartbeat test...");
+    try {
+      const payload = await fetchJson("/api/real/connection/heartbeat_test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setActionMsg(`OK: heartbeat ${fmt(payload?.heartbeat_age_s, "s")}`);
+      const statusPayload = await fetchJson("/api/real/connection/status");
+      setRadioStatus((prev) => ({ ...prev, ...(statusPayload || {}) }));
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, []);
+
+  return (
+    <main className="app app-shell real-test-app real-console">
+      <header className="top console-header">
+        <div>
+          <span className="mode-tag">Flight Ops</span>
+          <h1>Real Mission Operator</h1>
+          <p className="hint">Preflight gate, field link, and intervention controls.</p>
+        </div>
+        <div className="chips">
+          <a className="chip nav-chip" href="/sim">Simulation</a>
+          <span className="chip">Telemetry stream: {telemetryStream.connected ? "connected" : "reconnecting"}</span>
+        </div>
+      </header>
+
+      <section className="chips compact-strip console-strip" aria-label="real-mission-categories">
+        <span className="chip"><strong>Preflight Gate:</strong> readiness checklist + autonomy blockers</span>
+        <span className="chip"><strong>Field Link:</strong> 3DR serial radio connect/heartbeat</span>
+        <span className="chip"><strong>Safety Actions:</strong> Hold / RTL / Land + Tiny Mission preset</span>
+      </section>
+
+      <section className={`real-banner tone-${bannerTone}`}>
+        <strong>{bannerLabel(readiness)}</strong>
+        <span>
+          manual={String(Boolean(readiness.can_manual))} • autonomous={String(Boolean(readiness.can_autonomous))}
+        </span>
+      </section>
+
+      {loadError ? <div className="real-error">Readiness load error: {loadError}</div> : null}
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Field Link — Radio Connection (3DR X6-433)</h2>
+            <p className="hint">Connect, then confirm heartbeat freshness.</p>
+          </div>
+        </div>
+        <div className="real-radio-grid">
+          <label className="real-field">
+            <span>Serial Port</span>
+            <select value={serialPort} onChange={(e) => setSerialPort(e.target.value)}>
+              <option value="">Select port</option>
+              {radioPorts.map((p) => (
+                <option key={p.port} value={p.port}>{p.port}{p.description ? ` — ${p.description}` : ""}</option>
+              ))}
+            </select>
+          </label>
+          <label className="real-field">
+            <span>Baud</span>
+            <select value={String(serialBaud)} onChange={(e) => setSerialBaud(Number(e.target.value) || 57600)}>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
+              <option value="38400">38400</option>
+            </select>
+          </label>
+        </div>
+        <div className="real-radio-actions">
+          <button className="real-connect-btn" disabled={actionBusy || !serialPort} onClick={connectRadio}>Connect</button>
+          <button className="real-disconnect-btn" disabled={actionBusy || !radioStatus.connected} onClick={disconnectRadio}>Disconnect</button>
+          <button className="real-test-btn" disabled={actionBusy || !radioStatus.connected} onClick={testHeartbeat}>Heartbeat Test</button>
+        </div>
+        <div className="status-pill-grid real-pill-grid compact-pill-grid">
+          <div className={`status-pill tone-${radioStatus.connected ? "good" : "bad"}`}><span>Connected</span><strong>{radioStatus.connected ? "YES" : "NO"}</strong></div>
+          <div className={`status-pill tone-${radioStatus.stale ? "warn" : "good"}`}><span>State</span><strong>{String(radioStatus.state || "unknown").toUpperCase()}</strong></div>
+          <div className={`status-pill tone-${radioStatus.lost ? "bad" : "good"}`}><span>Heartbeat Age</span><strong>{fmt(radioStatus.last_heartbeat_age_s, "s")}</strong></div>
+          <div className={`status-pill tone-${radioStatus.lost ? "bad" : "good"}`}><span>Telemetry Age</span><strong>{fmt(radioStatus.last_telemetry_age_s, "s")}</strong></div>
+          {radioStatus.connected ? <div className="status-pill tone-neutral"><span>Port</span><strong>{radioStatus.serial_port || "--"}</strong></div> : null}
+          {radioStatus.connected ? <div className="status-pill tone-neutral"><span>Baud</span><strong>{radioStatus.serial_baud || "--"}</strong></div> : null}
+        </div>
+        {radioStatus.error_message ? <p className="hint bad">Radio error: {String(radioStatus.error_message)}</p> : null}
+      </section>
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Safety Intervention Controls</h2>
+            <p className="hint">Primary emergency actions.</p>
+          </div>
+          {actionMsg ? <span className="chip">{actionMsg}</span> : null}
+        </div>
+        <div className="real-control-row">
+          <button
+            className="real-hold-btn"
+            disabled={!status.connected || actionBusy}
+            onClick={() => runControlAction("/api/real/control/hold", "HOLD", "Set vehicle to HOLD (LOITER) now?")}
+          >
+            Hold
+          </button>
+          <button
+            className="real-rtl-btn"
+            disabled={!status.connected || actionBusy}
+            onClick={() => runControlAction("/api/real/control/rtl", "RTL", "Return to launch now?")}
+          >
+            RTL
+          </button>
+          <button
+            className="real-land-btn"
+            disabled={!status.connected || actionBusy}
+            onClick={() => runControlAction("/api/real/control/land", "LAND", "Send LAND now?")}
+          >
+            Land
+          </button>
+        </div>
+      </section>
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Mission Planning Map</h2>
+            <p className="hint">Draw mission area, set start, generate path, and verify validity.</p>
+          </div>
+        </div>
+        <div className="chips compact-strip">
+          <span className="chip"><strong>Geometry:</strong> {planningState.geometryValid ? "valid" : "invalid"}</span>
+          <span className="chip"><strong>Path:</strong> {planningState.hasPath ? "ready" : "not generated"}</span>
+          <span className="chip"><strong>Fence:</strong> {planningState.fenceConfigured ? "configured" : "missing"}</span>
+          <span className="chip"><strong>Inside Fence:</strong> {planningState.missionInsideFence ? "yes" : "pending"}</span>
+          <span className="chip"><strong>Area:</strong> {fmt(planningState.areaM2, " m²")}</span>
+          <span className="chip"><strong>Perimeter:</strong> {fmt(planningState.perimeterM, " m")}</span>
+          <span className="chip"><strong>Route:</strong> {fmt(planningState.routeLengthM, " m")}</span>
+        </div>
+        <MapPanel
+          telemetry={telemetry}
+          mavConnected={Boolean(status.connected)}
+          variant="real"
+          onPlanningStateChange={setPlanningState}
+        />
+      </section>
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Approved Autonomy Actions</h2>
+            <p className="hint">Enabled only when readiness is green.</p>
+          </div>
+        </div>
+        <div className="real-preset-row">
+          <button
+            className="real-tiny-btn"
+            disabled={actionBusy || !readiness.can_autonomous || !planningState.validForMissionAction}
+            onClick={runTinyMissionPreset}
+          >
+            Tiny Mission
+          </button>
+        </div>
+        {!readiness.can_autonomous || !planningState.validForMissionAction ? (
+          <p className="hint">Tiny Mission locked: require readiness green + valid generated mission path.</p>
+        ) : null}
+      </section>
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Live Vehicle Status</h2>
+            <p className="hint">At-a-glance status.</p>
+          </div>
+        </div>
+        <div className="status-pill-grid real-pill-grid compact-pill-grid">
+          {primaryLiveCards.map((item) => (
+            <div key={item.label} className={`status-pill tone-${item.tone}`}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+        <details className="inline-collapsible" open={showAllStatus} onToggle={(e) => setShowAllStatus(e.currentTarget.open)}>
+          <summary>More status</summary>
+          <div className="collapsible-body status-pill-grid real-pill-grid compact-pill-grid">
+            {liveCards.filter((item) => !primaryLiveCards.some((primary) => primary.label === item.label)).map((item) => (
+              <div key={item.label} className={`status-pill tone-${item.tone}`}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+        </details>
+      </section>
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Preflight Readiness Checklist</h2>
+            <p className="hint">Blockers first, healthy checks minimized.</p>
+          </div>
+        </div>
+        <div className="real-check-group critical">
+          <h3>Critical blockers</h3>
+          {groupedChecks.critical.length ? (
+            groupedChecks.critical.map((check) => (
+              <article key={check.key} className="real-check bad">
+                <div className="real-check-main">
+                  <strong>{check.key}</strong>
+                  <span className="chip">{check.severity}</span>
+                </div>
+                <p>{check.message}</p>
+              </article>
+            ))
+          ) : (
+            <div className="empty-card compact">No critical blockers.</div>
+          )}
+        </div>
+
+        <div className="real-check-group warn">
+          <h3>Warnings</h3>
+          {groupedChecks.warnings.length ? (
+            groupedChecks.warnings.map((check) => (
+              <article key={check.key} className="real-check warn">
+                <div className="real-check-main">
+                  <strong>{check.key}</strong>
+                  <span className="chip">warning</span>
+                </div>
+                <p>{check.message}</p>
+              </article>
+            ))
+          ) : (
+            <div className="empty-card compact">No warnings.</div>
+          )}
+        </div>
+
+        <details className="inline-collapsible" open={showHealthyChecks} onToggle={(e) => setShowHealthyChecks(e.currentTarget.open)}>
+          <summary>Healthy checks ({groupedChecks.healthy.length})</summary>
+          <div className="collapsible-body real-checklist compact-list">
+            {groupedChecks.healthy.map((check) => (
+              <article key={check.key} className="real-check ok compact">
+                <div className="real-check-main">
+                  <strong>{check.key}</strong>
+                </div>
+                <p>{check.message}</p>
+              </article>
+            ))}
+          </div>
+        </details>
+      </section>
+
+      <section className="panel real-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Autonomy Blocking Reasons</h2>
+            <p className="hint">Fix these to unlock autonomy.</p>
+          </div>
+        </div>
+        {(readiness.blocking_reasons || []).length ? (
+          <ul className="real-reasons">
+            {readiness.blocking_reasons.map((reason, idx) => (
+              <li key={`${reason}-${idx}`}>{reason}</li>
+            ))}
+          </ul>
+        ) : (
+          <div className="empty-card">No critical blockers currently reported.</div>
+        )}
+      </section>
+    </main>
+  );
+}

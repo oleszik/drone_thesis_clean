@@ -1,11 +1,11 @@
 export function LayerToggles({ items, legend }) {
   return (
     <div className="map-ops-grid">
-      <section className="map-sidecard">
-        <div className="map-sidecard-head">
+      <details className="map-sidecard map-sidecard-collapsible" open>
+        <summary className="map-sidecard-head">
           <h3>Layers</h3>
-          <p className="hint">Show only what helps the operator right now.</p>
-        </div>
+          <p className="hint">Toggle overlays</p>
+        </summary>
         <div className="toggle-grid">
           {items.map((item) => (
             <label key={item.key} className="toggle-row">
@@ -18,13 +18,13 @@ export function LayerToggles({ items, legend }) {
             </label>
           ))}
         </div>
-      </section>
+      </details>
 
-      <section className="map-sidecard">
-        <div className="map-sidecard-head">
+      <details className="map-sidecard map-sidecard-collapsible">
+        <summary className="map-sidecard-head">
           <h3>Legend</h3>
-          <p className="hint">Map colors and symbols used during operation.</p>
-        </div>
+          <p className="hint">Map symbols</p>
+        </summary>
         <div className="legend-list">
           {legend.map((item) => (
             <div key={item.label} className="legend-row">
@@ -33,7 +33,7 @@ export function LayerToggles({ items, legend }) {
             </div>
           ))}
         </div>
-      </section>
+      </details>
     </div>
   );
 }

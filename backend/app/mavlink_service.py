@@ -20,6 +20,7 @@ class MavlinkSettings:
     heartbeat_timeout_sec: float
     default_takeoff_alt_m: float
     track_max_points: int = 2000
+    serial_baud: int | None = None
 
 
 class MavlinkService:
@@ -322,11 +323,28 @@ class MavlinkService:
 
     def _connect(self) -> bool:
         conn_url = self._settings.connection_url
+        kwargs: dict[str, Any] = {"autoreconnect": True}
         if str(conn_url).startswith("udp:"):
             # For SITL local telemetry, we need input socket semantics.
             conn_url = "udpin:" + str(conn_url)[len("udp:") :]
+        elif str(conn_url).startswith("serial:"):
+            # Format: serial:<port>:<baud>
+            raw = str(conn_url)[len("serial:") :]
+            port = raw
+            baud = self._settings.serial_baud
+            if ":" in raw:
+                maybe_port, maybe_baud = raw.rsplit(":", 1)
+                if maybe_port:
+                    port = maybe_port
+                try:
+                    baud = int(maybe_baud)
+                except Exception:
+                    pass
+            conn_url = port
+            if baud is not None:
+                kwargs["baud"] = int(baud)
         try:
-            master = mavutil.mavlink_connection(conn_url, autoreconnect=True)
+            master = mavutil.mavlink_connection(conn_url, **kwargs)
             master.wait_heartbeat(timeout=self._settings.heartbeat_timeout_sec)
             self._request_data_streams(master)
         except Exception as exc:

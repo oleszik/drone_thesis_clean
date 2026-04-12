@@ -112,6 +112,9 @@ Tools/autotest/sim_vehicle.py -w -v ArduCopter --console --map \
 
 Website (Current: React + FastAPI + Tencent map via backend tile proxy)
 ------------------------------------------------------------------------
+
+Linux/WSL - Backend + Frontend
+------------------------------
 # Backend env (one-time)
 cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
 python3 -m venv .venv-web
@@ -135,16 +138,66 @@ cat > .env.local <<'EOF'
 VITE_BACKEND_BASE=http://127.0.0.1:8000
 EOF
 
-# Backend run
+# Run backend (terminal 1)
 cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
 source .venv-web/bin/activate
 uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 
-# Frontend (Vite + React) in second terminal
+# Run frontend (terminal 2)
 cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean/frontend
 npm run dev -- --host 127.0.0.1 --port 5173
 
-# Open in browser
+# Browser
+# http://127.0.0.1:5173
+
+# One-command full start (Windows)
+Set-Location "D:\GitHub_Repos\drone_thesis_clean"
+powershell -ExecutionPolicy Bypass -File .\scripts\start_full_win.ps1
+
+Windows (PowerShell) - Backend + Frontend
+-----------------------------------------
+# Backend env (one-time)
+Set-Location "D:\GitHub_Repos\drone_thesis_clean"
+python -m venv .venv-web
+.\.venv-web\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r backend\requirements.txt
+
+# If activation fails with "Activate.ps1 not recognized":
+# 1) Create the env first (if missing):
+#    python -m venv .venv-web
+# 2) Use venv python directly (no activation required):
+#    .\.venv-web\Scripts\python.exe -m pip install -r backend\requirements.txt
+
+# Backend .env (one-time; used by backend/app/config.py)
+@"
+MAP_PROVIDER=tencent
+TENCENT_MAP_KEY=YOUR_TENCENT_KEY
+MAVLINK_URL=udpin:0.0.0.0:14551
+"@ | Set-Content -Path .env
+
+# Frontend deps (one-time)
+Set-Location "D:\GitHub_Repos\drone_thesis_clean\frontend"
+npm install
+
+# Frontend .env.local (one-time; used by Vite)
+@"
+VITE_BACKEND_BASE=http://127.0.0.1:8000
+"@ | Set-Content -Path .env.local
+
+# Run backend (terminal 1)
+Set-Location "D:\GitHub_Repos\drone_thesis_clean"
+.\.venv-web\Scripts\Activate.ps1
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Backend run fallback (without activation)
+.\.venv-web\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Run frontend (terminal 2)
+Set-Location "D:\GitHub_Repos\drone_thesis_clean\frontend"
+npm run dev -- --host 127.0.0.1 --port 5173
+
+# Browser
 # http://127.0.0.1:5173
 
 Desktop App (Electron shell)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ import yaml
 
 @dataclass(frozen=True)
 class BackendConfig:
+    runtime_mode: str
     host: str
     port: int
     frontend_origin: str
@@ -29,6 +31,32 @@ class BackendConfig:
     track_max_points: int
     coverage_cell_size_m: float
     coverage_footprint_radius_m: float
+    allowed_fence_polygon_lng_lat: list[list[float]]
+    real_serial_default_port: str
+    real_serial_default_baud: int
+
+
+def _parse_polygon_payload(raw: Any) -> list[list[float]]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    if not isinstance(raw, list):
+        return []
+    out: list[list[float]] = []
+    for item in raw:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        try:
+            lng = float(item[0])
+            lat = float(item[1])
+        except Exception:
+            continue
+        out.append([lng, lat])
+    if len(out) >= 2 and out[0] == out[-1]:
+        out = out[:-1]
+    return out
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -48,6 +76,10 @@ def load_config(repo_root: Path | None = None) -> BackendConfig:
     frontend = cfg.get("frontend", {}) if isinstance(cfg.get("frontend"), dict) else {}
     maps = cfg.get("maps", {}) if isinstance(cfg.get("maps"), dict) else {}
     mav = cfg.get("mavlink", {}) if isinstance(cfg.get("mavlink"), dict) else {}
+
+    runtime_mode = str(os.getenv("RUNTIME_MODE", backend.get("runtime_mode", "simulation"))).strip().lower()
+    if runtime_mode not in {"simulation", "real_mission"}:
+        runtime_mode = "simulation"
 
     host = str(os.getenv("BACKEND_HOST", backend.get("host", "127.0.0.1")))
     port = int(os.getenv("BACKEND_PORT", backend.get("port", 8000)))
@@ -75,7 +107,13 @@ def load_config(repo_root: Path | None = None) -> BackendConfig:
     coverage_footprint_radius_m = float(
         os.getenv("COVERAGE_FOOTPRINT_RADIUS_M", maps.get("coverage_footprint_radius_m", 6.0))
     )
+    allowed_fence_polygon_lng_lat = _parse_polygon_payload(
+        os.getenv("ALLOWED_FENCE_POLYGON_LNG_LAT", maps.get("allowed_fence_polygon_lng_lat", []))
+    )
+    real_serial_default_port = str(os.getenv("REAL_SERIAL_DEFAULT_PORT", backend.get("real_serial_default_port", "")))
+    real_serial_default_baud = int(os.getenv("REAL_SERIAL_DEFAULT_BAUD", backend.get("real_serial_default_baud", 57600)))
     return BackendConfig(
+        runtime_mode=runtime_mode,
         host=host,
         port=port,
         frontend_origin=frontend_origin,
@@ -94,4 +132,7 @@ def load_config(repo_root: Path | None = None) -> BackendConfig:
         track_max_points=track_max_points,
         coverage_cell_size_m=coverage_cell_size_m,
         coverage_footprint_radius_m=coverage_footprint_radius_m,
+        allowed_fence_polygon_lng_lat=allowed_fence_polygon_lng_lat,
+        real_serial_default_port=real_serial_default_port,
+        real_serial_default_baud=real_serial_default_baud,
     )

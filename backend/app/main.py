@@ -17,6 +17,13 @@ from .coverage_service import CoverageConfig, CoverageService
 from .mavlink_service import MavlinkService, MavlinkSettings
 from .mission_service import MissionService
 from .run_manager import RunManager
+from .services.mavlink.serial_radio_transport import RealRadioService
+from .services.mavlink.transport import normalize_runtime_mode, resolve_transport_url
+from .services.mission.real_mission_service import RealMissionService
+from .services.mission.simulation_mission_service import SimulationMissionService
+from .services.safety.autonomy_guard import AutonomyGuard
+from .services.safety.fence_service import check_points_inside_fence, get_operating_fence, validate_mission_payload_inside_fence
+from .services.safety.readiness_service import ReadinessService
 from .sse import encode_sse, encode_sse_comment, sleep_or_disconnect, stable_json
 from .sitl_executor import SitlExecutor
 
@@ -62,6 +69,18 @@ class MissionGenerateRequest(BaseModel):
     auto_spacing: bool = False
 
 
+class TinyMissionRequest(BaseModel):
+    takeoff_alt_m: float = 3.0
+    hover_before_s: float = 8.0
+    forward_m: float = 3.0
+    hover_after_s: float = 8.0
+    speed_m_s: float = 1.0
+    heading_deg: float | None = None
+    start_lng: float | None = None
+    start_lat: float | None = None
+    start_scan: bool = False
+
+
 class SimTickRequest(BaseModel):
     dt: float = 0.1
 
@@ -81,6 +100,11 @@ class RunNotesRequest(BaseModel):
     notes: str = ""
 
 
+class RealRadioConnectRequest(BaseModel):
+    serial_port: str
+    serial_baud: int = 57600
+
+
 def _model_to_dict(model: BaseModel) -> dict[str, object]:
     if hasattr(model, "model_dump"):
         return model.model_dump()
@@ -89,6 +113,7 @@ def _model_to_dict(model: BaseModel) -> dict[str, object]:
 
 def create_app() -> FastAPI:
     cfg = load_config(Path(__file__).resolve().parents[2])
+    runtime_mode = normalize_runtime_mode(cfg.runtime_mode)
     logging.basicConfig(
         level=getattr(logging, cfg.log_level, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
@@ -103,7 +128,7 @@ def create_app() -> FastAPI:
     )
     mav = MavlinkService(
         MavlinkSettings(
-            connection_url=cfg.mavlink_url,
+            connection_url=resolve_transport_url(runtime_mode=runtime_mode, configured_url=cfg.mavlink_url),
             reconnect_sec=cfg.mavlink_reconnect_sec,
             heartbeat_timeout_sec=cfg.mavlink_heartbeat_timeout_sec,
             default_takeoff_alt_m=cfg.default_takeoff_alt_m,
@@ -121,7 +146,18 @@ def create_app() -> FastAPI:
         )
     )
     mission = MissionService(footprint_radius_m=cfg.coverage_footprint_radius_m)
+    readiness = ReadinessService(cfg)
     sitl = SitlExecutor(mav=mav, mission=mission)
+    sim_mission = SimulationMissionService(mission=mission, sitl=sitl)
+    real_mission = RealMissionService(mission=mission)
+    real_radio = RealRadioService(
+        reconnect_sec=cfg.mavlink_reconnect_sec,
+        heartbeat_timeout_sec=cfg.mavlink_heartbeat_timeout_sec,
+        default_takeoff_alt_m=cfg.default_takeoff_alt_m,
+        track_max_points=cfg.track_max_points,
+        default_serial_port=cfg.real_serial_default_port,
+        default_serial_baud=cfg.real_serial_default_baud,
+    )
     runs = RunManager()
     cov_stop_evt = threading.Event()
     cov_thread: threading.Thread | None = None
@@ -184,6 +220,37 @@ def create_app() -> FastAPI:
 
     def _meters_between_lat(lat1: float, lat2: float) -> float:
         return abs(float(lat2) - float(lat1)) * 111320.0
+
+    def _operating_fence() -> dict[str, object]:
+        return get_operating_fence(cfg)
+
+    def _require_points_inside_fence(points_lng_lat: list[list[float]], label: str) -> None:
+        fence = _operating_fence()
+        if not bool(fence.get("configured")):
+            raise ValueError("operation fence is not configured")
+        points: list[tuple[float, float]] = []
+        for p in points_lng_lat:
+            if not isinstance(p, (list, tuple)) or len(p) < 2:
+                continue
+            try:
+                points.append((float(p[0]), float(p[1])))
+            except Exception as exc:
+                raise ValueError(f"invalid {label} point: {p}") from exc
+        if not points:
+            raise ValueError(f"{label} requires at least one valid point")
+        ok, outside = check_points_inside_fence(points, fence)
+        if not ok:
+            sample = outside[0] if outside else (None, None)
+            raise ValueError(
+                f"{label} has points outside configured fence (outside_count={len(outside)}, sample=[{sample[0]}, {sample[1]}])"
+            )
+
+    def _require_mission_payload_inside_fence(mission_payload: dict[str, object], *, context: str) -> None:
+        fence = _operating_fence()
+        ok, msg, details = validate_mission_payload_inside_fence(mission_payload, fence)
+        if ok:
+            return
+        raise ValueError(f"{context}: {msg}; details={details}")
 
     def _recommended_coverage_cell_size(bounds_w_m: float, bounds_h_m: float) -> float:
         area_m2 = max(1.0, float(bounds_w_m) * float(bounds_h_m))
@@ -256,19 +323,134 @@ def create_app() -> FastAPI:
         if cov_thread is not None:
             cov_thread.join(timeout=1.5)
         mav.stop()
+        try:
+            real_radio.disconnect()
+        except Exception:
+            pass
 
     @app.get("/api/health")
     def health() -> dict[str, object]:
         return {
             "ok": True,
             "service": "backend",
+            "runtime_mode": runtime_mode,
             "map_provider": cfg.map_provider,
             "tencent_key_configured": bool(cfg.tencent_key),
         }
 
+    @app.get("/api/sim/health")
+    def sim_health() -> dict[str, object]:
+        return health()
+
+    @app.get("/api/real/health")
+    def real_health() -> dict[str, object]:
+        return health()
+
     @app.get("/api/status")
     def status() -> dict[str, object]:
         return mav.get_status()
+
+    @app.get("/api/sim/status")
+    def sim_status() -> dict[str, object]:
+        return status()
+
+    @app.get("/api/real/status")
+    def real_status() -> dict[str, object]:
+        return real_radio.status()
+
+    @app.get("/api/readiness")
+    def readiness_state() -> dict[str, object]:
+        try:
+            return readiness.evaluate(
+                status=mav.get_status(),
+                telemetry=mav.get_telemetry(),
+                mission_path=mission.get_path(),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"readiness evaluation failed: {exc}")
+
+    @app.get("/api/sim/readiness")
+    def sim_readiness_state() -> dict[str, object]:
+        return readiness_state()
+
+    @app.get("/api/real/readiness")
+    def real_readiness_state() -> dict[str, object]:
+        snap = readiness.evaluate(
+            status=real_radio.status().get("mav_status") or {},
+            telemetry=real_radio.telemetry(),
+            mission_path=mission.get_path(),
+        )
+        radio_state = real_radio.status()
+        hb_age = radio_state.get("last_heartbeat_age_s")
+        tele_age = radio_state.get("last_telemetry_age_s")
+        radio_connected = bool(radio_state.get("connected"))
+        heartbeat_fresh = radio_connected and hb_age is not None and float(hb_age) <= max(2.0, float(cfg.mavlink_heartbeat_timeout_sec))
+        telemetry_fresh = radio_connected and tele_age is not None and float(tele_age) <= 2.5
+
+        checks = list(snap.get("checks") or [])
+        checks.extend(
+            [
+                {
+                    "key": "radio_connected",
+                    "ok": radio_connected,
+                    "severity": "critical",
+                    "message": "serial radio connected" if radio_connected else "serial radio disconnected",
+                    "value": {
+                        "serial_port": radio_state.get("serial_port"),
+                        "serial_baud": radio_state.get("serial_baud"),
+                    },
+                },
+                {
+                    "key": "radio_heartbeat_fresh",
+                    "ok": heartbeat_fresh,
+                    "severity": "critical",
+                    "message": "radio heartbeat is fresh" if heartbeat_fresh else f"radio heartbeat stale ({hb_age})",
+                    "value": hb_age,
+                },
+                {
+                    "key": "radio_telemetry_fresh",
+                    "ok": telemetry_fresh,
+                    "severity": "critical",
+                    "message": "radio telemetry is fresh" if telemetry_fresh else f"radio telemetry stale/lost ({tele_age})",
+                    "value": tele_age,
+                },
+            ]
+        )
+        blocking = [
+            str(item.get("message") or "")
+            for item in checks
+            if item.get("severity") == "critical" and not bool(item.get("ok"))
+        ]
+        can_manual = bool(radio_connected)
+        can_autonomous = bool(snap.get("can_autonomous")) and heartbeat_fresh and telemetry_fresh and radio_connected
+        return {
+            **snap,
+            "overall_ready": bool(can_autonomous),
+            "can_manual": can_manual,
+            "can_autonomous": can_autonomous,
+            "checks": checks,
+            "blocking_reasons": blocking,
+            "radio": radio_state,
+        }
+
+    def _readiness_snapshot() -> dict[str, object]:
+        return readiness.evaluate(
+            status=mav.get_status(),
+            telemetry=mav.get_telemetry(),
+            mission_path=mission.get_path(),
+        )
+
+    def _real_readiness_snapshot() -> dict[str, object]:
+        return real_readiness_state()
+
+    autonomy_guard = AutonomyGuard(snapshot_provider=_readiness_snapshot)
+    real_autonomy_guard = AutonomyGuard(snapshot_provider=_real_readiness_snapshot)
+
+    def _require_autonomy_ready(action: str) -> dict[str, object]:
+        return autonomy_guard.require(action)
+
+    def _require_real_autonomy_ready(action: str) -> dict[str, object]:
+        return real_autonomy_guard.require(action)
 
     @app.post("/api/connection/connect")
     def connection_connect() -> dict[str, object]:
@@ -286,6 +468,14 @@ def create_app() -> FastAPI:
     def telemetry() -> dict[str, object]:
         return mav.get_telemetry()
 
+    @app.get("/api/sim/telemetry")
+    def sim_telemetry() -> dict[str, object]:
+        return telemetry()
+
+    @app.get("/api/real/telemetry")
+    def real_telemetry() -> dict[str, object]:
+        return real_radio.telemetry()
+
     @app.get("/api/stream/telemetry")
     async def stream_telemetry(request: Request) -> StreamingResponse:
         async def gen():
@@ -296,6 +486,32 @@ def create_app() -> FastAPI:
                 payload = {
                     "status": mav.get_status(),
                     "telemetry": mav.get_telemetry(),
+                }
+                seq += 1
+                yield encode_sse(data=payload, event="telemetry", event_id=str(seq))
+                if await sleep_or_disconnect(request, 0.2):
+                    break
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    @app.get("/api/sim/stream/telemetry")
+    async def sim_stream_telemetry(request: Request) -> StreamingResponse:
+        return await stream_telemetry(request)
+
+    @app.get("/api/real/stream/telemetry")
+    async def real_stream_telemetry(request: Request) -> StreamingResponse:
+        async def gen():
+            seq = 0
+            while True:
+                if await request.is_disconnected():
+                    break
+                payload = {
+                    "status": real_radio.status().get("mav_status") or {},
+                    "telemetry": real_radio.telemetry(),
                 }
                 seq += 1
                 yield encode_sse(data=payload, event="telemetry", event_id=str(seq))
@@ -333,6 +549,10 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
+    @app.get("/api/sim/stream/bridge_state")
+    async def sim_stream_bridge_state(request: Request) -> StreamingResponse:
+        return await stream_bridge_state(request)
+
     @app.get("/api/stream/coverage")
     async def stream_coverage(request: Request) -> StreamingResponse:
         async def gen():
@@ -358,6 +578,10 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
+    @app.get("/api/sim/stream/coverage")
+    async def sim_stream_coverage(request: Request) -> StreamingResponse:
+        return await stream_coverage(request)
+
     @app.get("/api/stream/track")
     async def stream_track(request: Request, limit: int = 600) -> StreamingResponse:
         async def gen():
@@ -381,6 +605,10 @@ def create_app() -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
+
+    @app.get("/api/sim/stream/track")
+    async def sim_stream_track(request: Request, limit: int = 600) -> StreamingResponse:
+        return await stream_track(request, limit=limit)
 
     @app.get("/api/map_state")
     def map_state() -> dict[str, object]:
@@ -419,6 +647,7 @@ def create_app() -> FastAPI:
             "tile_url_template": "/api/map/tile/{z}/{x}/{y}.png",
             "center_lng_lat": [lng, lat],
             "zoom": int(cfg.map_default_zoom),
+            "operating_fence": _operating_fence(),
             "origin": origin,
             "bounds_polygon_lng_lat": bounds_polygon,
             "planned_path_lng_lat": mission_payload.get("waypoints_lng_lat", []),
@@ -431,6 +660,10 @@ def create_app() -> FastAPI:
             "vehicle": vehicle,
         }
 
+    @app.get("/api/sim/map_state")
+    def sim_map_state() -> dict[str, object]:
+        return map_state()
+
     @app.get("/api/track")
     def track(limit: int = 500) -> dict[str, object]:
         items = mav.get_track(limit=limit)
@@ -440,18 +673,31 @@ def create_app() -> FastAPI:
     def get_coverage() -> dict[str, object]:
         return coverage.get_coverage()
 
+    @app.get("/api/sim/coverage")
+    def sim_get_coverage() -> dict[str, object]:
+        return get_coverage()
+
     @app.post("/api/coverage/reset")
     def reset_coverage() -> dict[str, object]:
         _reset_coverage_for_mission()
         return {"ok": True}
 
+    @app.post("/api/sim/coverage/reset")
+    def sim_reset_coverage() -> dict[str, object]:
+        return reset_coverage()
+
     @app.get("/api/scan/debug")
     def scan_debug() -> dict[str, object]:
         return coverage.get_scan_debug()
 
+    @app.get("/api/sim/scan/debug")
+    def sim_scan_debug() -> dict[str, object]:
+        return scan_debug()
+
     @app.post("/api/mission/area")
     def mission_area(req: MissionAreaRequest) -> dict[str, object]:
         try:
+            _require_points_inside_fence(req.polygon_lng_lat, "mission area")
             out = mission.set_area(req.polygon_lng_lat)
             runs.log("MISSION_AREA_SET", {"points": out.get("points")})
             return out
@@ -460,25 +706,35 @@ def create_app() -> FastAPI:
 
     @app.post("/api/mission/start_position")
     def mission_start_position(req: MissionStartRequest) -> dict[str, object]:
-        out = mission.set_start_position(req.lng, req.lat)
-        runs.log("MISSION_START_SET", {"lng": req.lng, "lat": req.lat})
-        return out
+        try:
+            _require_points_inside_fence([[req.lng, req.lat]], "start position")
+            out = mission.set_start_position(req.lng, req.lat)
+            runs.log("MISSION_START_SET", {"lng": req.lng, "lat": req.lat})
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @app.post("/api/mission/orbit_center")
     def mission_orbit_center(req: MissionStartRequest) -> dict[str, object]:
-        out = mission.set_orbit_center(req.lng, req.lat)
-        runs.log("MISSION_ORBIT_CENTER_SET", {"lng": req.lng, "lat": req.lat})
-        return out
+        try:
+            _require_points_inside_fence([[req.lng, req.lat]], "orbit center")
+            out = mission.set_orbit_center(req.lng, req.lat)
+            runs.log("MISSION_ORBIT_CENTER_SET", {"lng": req.lng, "lat": req.lat})
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @app.post("/api/mission/generate_scan")
     def mission_generate_scan(req: MissionGenerateRequest) -> dict[str, object]:
         try:
-            out = mission.generate_scan(
+            _require_autonomy_ready("mission_generate_scan")
+            out = real_mission.generate_scan(
                 spacing_m=req.spacing_m,
                 speed_m_s=req.speed_m_s,
                 start_scan=req.start_scan,
                 auto_spacing=req.auto_spacing,
             )
+            _require_mission_payload_inside_fence(out, context="generated scan mission")
             runs.log(
                 "MISSION_PATH_GENERATED",
                 {
@@ -495,8 +751,9 @@ def create_app() -> FastAPI:
     @app.post("/api/mission/generate_orbit_scan")
     def mission_generate_orbit_scan(req: MissionOrbitGenerateRequest) -> dict[str, object]:
         try:
+            _require_autonomy_ready("mission_generate_orbit_scan")
             layer_payload = [_model_to_dict(layer) for layer in req.layers] if req.layers else None
-            out = mission.generate_orbit_scan(
+            out = real_mission.generate_orbit_scan(
                 radius_m=req.radius_m,
                 altitude_m=req.altitude_m,
                 laps=req.laps,
@@ -507,6 +764,7 @@ def create_app() -> FastAPI:
                 start_scan=req.start_scan,
                 layers=layer_payload,
             )
+            _require_mission_payload_inside_fence(out, context="generated orbit mission")
             runs.log(
                 "MISSION_ORBIT_GENERATED",
                 {
@@ -524,9 +782,241 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @app.post("/api/mission/generate_tiny")
+    def mission_generate_tiny(req: TinyMissionRequest) -> dict[str, object]:
+        try:
+            _require_autonomy_ready("mission_generate_tiny")
+            tele = mav.get_telemetry()
+            start_lng = req.start_lng if req.start_lng is not None else tele.get("lon")
+            start_lat = req.start_lat if req.start_lat is not None else tele.get("lat")
+            if start_lng is None or start_lat is None:
+                raise ValueError("start position is unavailable; provide start_lng/start_lat or wait for GPS telemetry")
+            heading_deg = req.heading_deg if req.heading_deg is not None else tele.get("yaw_deg")
+            out = real_mission.generate_tiny_mission(
+                start_lng=float(start_lng),
+                start_lat=float(start_lat),
+                heading_deg=(float(heading_deg) if heading_deg is not None else None),
+                takeoff_alt_m=req.takeoff_alt_m,
+                hover_before_s=req.hover_before_s,
+                forward_m=req.forward_m,
+                hover_after_s=req.hover_after_s,
+                speed_m_s=req.speed_m_s,
+                start_scan=req.start_scan,
+                fence_polygon_lng_lat=list(_operating_fence().get("polygon_lng_lat") or []),
+            )
+            _require_mission_payload_inside_fence(out, context="generated tiny mission")
+            runs.log(
+                "MISSION_TINY_GENERATED",
+                {
+                    "takeoff_alt_m": req.takeoff_alt_m,
+                    "hover_before_s": req.hover_before_s,
+                    "forward_m": req.forward_m,
+                    "hover_after_s": req.hover_after_s,
+                    "speed_m_s": req.speed_m_s,
+                    "heading_deg": heading_deg,
+                    "start_scan": req.start_scan,
+                },
+            )
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @app.get("/api/mission/path")
     def mission_path() -> dict[str, object]:
-        return mission.get_path()
+        return real_mission.path()
+
+    # --- Simulation namespace (Phase split compatibility layer) ---
+    @app.post("/api/sim/mission/area")
+    def sim_mission_area(req: MissionAreaRequest) -> dict[str, object]:
+        return mission_area(req)
+
+    @app.post("/api/sim/mission/start_position")
+    def sim_mission_start_position(req: MissionStartRequest) -> dict[str, object]:
+        return mission_start_position(req)
+
+    @app.post("/api/sim/mission/orbit_center")
+    def sim_mission_orbit_center(req: MissionStartRequest) -> dict[str, object]:
+        return mission_orbit_center(req)
+
+    @app.post("/api/sim/mission/generate_scan")
+    def sim_mission_generate_scan(req: MissionGenerateRequest) -> dict[str, object]:
+        return mission_generate_scan(req)
+
+    @app.post("/api/sim/mission/generate_orbit_scan")
+    def sim_mission_generate_orbit_scan(req: MissionOrbitGenerateRequest) -> dict[str, object]:
+        return mission_generate_orbit_scan(req)
+
+    @app.get("/api/sim/mission/path")
+    def sim_mission_path() -> dict[str, object]:
+        return mission_path()
+
+    @app.post("/api/sim/mission/clear")
+    def sim_mission_clear() -> dict[str, object]:
+        return mission_clear()
+
+    # --- Real mission namespace (field/operator surface) ---
+    @app.get("/api/real/connection/ports")
+    def real_connection_ports() -> dict[str, object]:
+        return real_radio.list_serial_ports()
+
+    @app.get("/api/real/connection/status")
+    def real_connection_status() -> dict[str, object]:
+        return real_radio.status()
+
+    @app.post("/api/real/connection/connect")
+    def real_connection_connect(req: RealRadioConnectRequest) -> dict[str, object]:
+        try:
+            out = real_radio.connect(serial_port=req.serial_port, serial_baud=req.serial_baud)
+            runs.log("REAL_RADIO_CONNECTED", {"serial_port": req.serial_port, "serial_baud": req.serial_baud})
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+
+    @app.post("/api/real/connection/disconnect")
+    def real_connection_disconnect() -> dict[str, object]:
+        out = real_radio.disconnect()
+        runs.log("REAL_RADIO_DISCONNECTED", out)
+        return out
+
+    @app.post("/api/real/connection/heartbeat_test")
+    def real_connection_heartbeat_test() -> dict[str, object]:
+        out = real_radio.heartbeat_test()
+        if not bool(out.get("ok")):
+            raise HTTPException(status_code=409, detail=out)
+        return out
+
+    def _run_real_control(fn):
+        try:
+            return fn()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/api/real/control/arm")
+    def real_control_arm() -> dict[str, object]:
+        out = _run_real_control(real_radio.arm)
+        runs.log("REAL_ARM", out)
+        return out
+
+    @app.post("/api/real/control/disarm")
+    def real_control_disarm() -> dict[str, object]:
+        out = _run_real_control(real_radio.disarm)
+        runs.log("REAL_DISARM", out)
+        return out
+
+    @app.post("/api/real/control/takeoff")
+    def real_control_takeoff(req: TakeoffRequest) -> dict[str, object]:
+        out = _run_real_control(lambda: real_radio.takeoff(req.alt_m))
+        runs.log("REAL_TAKEOFF", {"alt_m": req.alt_m})
+        return out
+
+    @app.post("/api/real/control/hold")
+    def real_control_hold() -> dict[str, object]:
+        out = _run_real_control(lambda: real_radio.set_mode("LOITER"))
+        mode_now = str((real_radio.status().get("mav_status") or {}).get("mode") or "UNKNOWN")
+        payload = {**out, "target_mode": "LOITER", "resulting_mode": mode_now}
+        runs.log("REAL_HOLD", payload)
+        return payload
+
+    @app.post("/api/real/control/rtl")
+    def real_control_rtl() -> dict[str, object]:
+        out = _run_real_control(real_radio.rtl)
+        runs.log("REAL_RTL", out)
+        return out
+
+    @app.post("/api/real/control/land")
+    def real_control_land() -> dict[str, object]:
+        out = _run_real_control(real_radio.land)
+        runs.log("REAL_LAND", out)
+        return out
+
+    @app.post("/api/real/control/set_mode")
+    def real_control_set_mode(req: ModeRequest) -> dict[str, object]:
+        out = _run_real_control(lambda: real_radio.set_mode(req.mode))
+        runs.log("REAL_SET_MODE", {"mode": req.mode})
+        return out
+
+    @app.post("/api/real/mission/generate_tiny")
+    def real_mission_generate_tiny(req: TinyMissionRequest) -> dict[str, object]:
+        try:
+            _require_real_autonomy_ready("real_mission_generate_tiny")
+            tele = real_radio.telemetry()
+            start_lng = req.start_lng if req.start_lng is not None else tele.get("lon")
+            start_lat = req.start_lat if req.start_lat is not None else tele.get("lat")
+            if start_lng is None or start_lat is None:
+                raise ValueError("start position is unavailable; provide start_lng/start_lat or wait for GPS telemetry")
+            heading_deg = req.heading_deg if req.heading_deg is not None else tele.get("yaw_deg")
+            out = real_mission.generate_tiny_mission(
+                start_lng=float(start_lng),
+                start_lat=float(start_lat),
+                heading_deg=(float(heading_deg) if heading_deg is not None else None),
+                takeoff_alt_m=req.takeoff_alt_m,
+                hover_before_s=req.hover_before_s,
+                forward_m=req.forward_m,
+                hover_after_s=req.hover_after_s,
+                speed_m_s=req.speed_m_s,
+                start_scan=req.start_scan,
+                fence_polygon_lng_lat=list(_operating_fence().get("polygon_lng_lat") or []),
+            )
+            _require_mission_payload_inside_fence(out, context="generated tiny mission")
+            runs.log(
+                "REAL_MISSION_TINY_GENERATED",
+                {
+                    "takeoff_alt_m": req.takeoff_alt_m,
+                    "hover_before_s": req.hover_before_s,
+                    "forward_m": req.forward_m,
+                    "hover_after_s": req.hover_after_s,
+                    "speed_m_s": req.speed_m_s,
+                    "heading_deg": heading_deg,
+                    "start_scan": req.start_scan,
+                },
+            )
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/api/real/mission/path")
+    def real_mission_path() -> dict[str, object]:
+        return mission_path()
+
+    @app.post("/api/sim/connection/connect")
+    def sim_connection_connect() -> dict[str, object]:
+        return connection_connect()
+
+    @app.post("/api/sim/connection/disconnect")
+    def sim_connection_disconnect() -> dict[str, object]:
+        return connection_disconnect()
+
+    @app.post("/api/sim/control/arm")
+    def sim_control_arm() -> dict[str, object]:
+        return control_arm()
+
+    @app.post("/api/sim/control/disarm")
+    def sim_control_disarm() -> dict[str, object]:
+        return control_disarm()
+
+    @app.post("/api/sim/control/takeoff")
+    def sim_control_takeoff(req: TakeoffRequest) -> dict[str, object]:
+        return control_takeoff(req)
+
+    @app.post("/api/sim/control/rtl")
+    def sim_control_rtl() -> dict[str, object]:
+        return control_rtl()
+
+    @app.post("/api/sim/control/land")
+    def sim_control_land() -> dict[str, object]:
+        return control_land()
+
+    @app.post("/api/sim/control/hold")
+    def sim_control_hold() -> dict[str, object]:
+        return control_hold()
+
+    @app.post("/api/sim/control/set_mode")
+    def sim_control_set_mode(req: ModeRequest) -> dict[str, object]:
+        return control_set_mode(req)
 
     @app.post("/api/mission/clear")
     def mission_clear() -> dict[str, object]:
@@ -542,31 +1032,33 @@ def create_app() -> FastAPI:
     @app.post("/api/mission/sim/start")
     def mission_sim_start() -> dict[str, object]:
         try:
-            return mission.sim_start()
+            _require_autonomy_ready("mission_sim_start")
+            return sim_mission.sim_start()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
     @app.post("/api/mission/sim/pause")
     def mission_sim_pause() -> dict[str, object]:
-        return mission.sim_pause()
+        return sim_mission.sim_pause()
 
     @app.post("/api/mission/sim/stop")
     def mission_sim_stop() -> dict[str, object]:
-        return mission.sim_stop()
+        return sim_mission.sim_stop()
 
     @app.post("/api/mission/sim/tick")
     def mission_sim_tick(req: SimTickRequest) -> dict[str, object]:
-        return mission.step(req.dt)
+        return sim_mission.sim_tick(req.dt)
 
     @app.get("/api/mission/sim/state")
     def mission_sim_state() -> dict[str, object]:
-        return mission.get_sim_state()
+        return sim_mission.sim_state()
 
     @app.post("/api/sitl/start_scan")
     def sitl_start_scan(req: SitlStartRequest) -> dict[str, object]:
         try:
+            _require_autonomy_ready("sitl_start_scan")
             _reset_coverage_for_mission()
-            out = sitl.start_scan(alt_m=req.alt_m, accept_radius_m=req.accept_radius_m)
+            out = sim_mission.sitl_start_scan(alt_m=req.alt_m, accept_radius_m=req.accept_radius_m)
             runs.log("SITL_START_SCAN", {"alt_m": req.alt_m, "accept_radius_m": req.accept_radius_m})
             return out
         except ValueError as exc:
@@ -576,13 +1068,45 @@ def create_app() -> FastAPI:
 
     @app.post("/api/sitl/stop_scan")
     def sitl_stop_scan() -> dict[str, object]:
-        out = sitl.stop_scan()
+        out = sim_mission.sitl_stop_scan()
         runs.log("SITL_STOP_SCAN", out)
         return out
 
     @app.get("/api/sitl/state")
     def sitl_state() -> dict[str, object]:
-        return sitl.get_state()
+        return sim_mission.sitl_state()
+
+    @app.post("/api/sim/mission/sim/start")
+    def sim_ns_mission_sim_start() -> dict[str, object]:
+        return mission_sim_start()
+
+    @app.post("/api/sim/mission/sim/pause")
+    def sim_ns_mission_sim_pause() -> dict[str, object]:
+        return mission_sim_pause()
+
+    @app.post("/api/sim/mission/sim/stop")
+    def sim_ns_mission_sim_stop() -> dict[str, object]:
+        return mission_sim_stop()
+
+    @app.post("/api/sim/mission/sim/tick")
+    def sim_ns_mission_sim_tick(req: SimTickRequest) -> dict[str, object]:
+        return mission_sim_tick(req)
+
+    @app.get("/api/sim/mission/sim/state")
+    def sim_ns_mission_sim_state() -> dict[str, object]:
+        return mission_sim_state()
+
+    @app.post("/api/sim/sitl/start_scan")
+    def sim_ns_sitl_start_scan(req: SitlStartRequest) -> dict[str, object]:
+        return sitl_start_scan(req)
+
+    @app.post("/api/sim/sitl/stop_scan")
+    def sim_ns_sitl_stop_scan() -> dict[str, object]:
+        return sitl_stop_scan()
+
+    @app.get("/api/sim/sitl/state")
+    def sim_ns_sitl_state() -> dict[str, object]:
+        return sitl_state()
 
     def _run_control(fn):
         try:
@@ -615,6 +1139,14 @@ def create_app() -> FastAPI:
         out = _run_control(mav.rtl)
         runs.log("RTL", out)
         return out
+
+    @app.post("/api/control/hold")
+    def control_hold() -> dict[str, object]:
+        out = _run_control(lambda: mav.set_mode("LOITER"))
+        mode_now = str(mav.get_status().get("mode") or "UNKNOWN")
+        payload = {**out, "target_mode": "LOITER", "resulting_mode": mode_now}
+        runs.log("HOLD", payload)
+        return payload
 
     @app.post("/api/control/land")
     def control_land() -> dict[str, object]:

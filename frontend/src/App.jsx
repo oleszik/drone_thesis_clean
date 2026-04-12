@@ -54,6 +54,8 @@ export function App() {
   const [actionMsg, setActionMsg] = useState("");
   const [modeInput, setModeInput] = useState("GUIDED");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showSimDiagnostics, setShowSimDiagnostics] = useState(false);
+  const [showEventLog, setShowEventLog] = useState(false);
   const [coverageStats, setCoverageStats] = useState(null);
   const [coverageVersion, setCoverageVersion] = useState(0);
   const [missionState, setMissionState] = useState({
@@ -95,7 +97,7 @@ export function App() {
     }
   }, []);
 
-  const telemetryStream = useLiveStream("/api/stream/telemetry", {
+  const telemetryStream = useLiveStream("/api/sim/stream/telemetry", {
     event: "telemetry",
     onMessage: onTelemetryStream,
   });
@@ -106,7 +108,7 @@ export function App() {
 
     async function runHealth() {
       try {
-        const payload = await fetchJson("/api/health");
+  const payload = await fetchJson("/api/sim/health");
         if (!cancelled) {
           setHealth({
             ok: Boolean(payload?.ok),
@@ -201,7 +203,7 @@ export function App() {
     if (!window.confirm("Reset mission coverage history?")) return;
     setActionMsg("Resetting coverage...");
     try {
-      await fetchJson("/api/coverage/reset", {
+  await fetchJson("/api/sim/coverage/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -290,48 +292,58 @@ export function App() {
     [telemetry],
   );
 
-  const eventItems = useMemo(() => uiEvents, [uiEvents]);
+  const eventItems = useMemo(() => uiEvents.slice(0, 14), [uiEvents]);
 
   return (
-    <main className="app">
-      <header className="top">
+    <main className="app app-shell sim-console">
+      <header className="top console-header">
         <div>
-          <h1>Drone Thesis Dashboard</h1>
-          <p className="hint">Operator view for connection, mission execution, coverage, and live map supervision.</p>
+          <span className="mode-tag">Mission Lab</span>
+          <h1>Simulation Console</h1>
+          <p className="hint">Simulation-only workspace for mission design, SITL execution, and debug instrumentation.</p>
         </div>
-        <button className="small-btn" onClick={() => setSidebarCollapsed((v) => !v)}>
-          {sidebarCollapsed ? "Show Controls" : "Hide Controls"}
-        </button>
+        <div className="chips">
+          <a className="chip nav-chip" href="/sim">Simulation</a>
+          <a className="chip nav-chip" href="/real-test">Real Mission</a>
+          <button className="small-btn" onClick={() => setSidebarCollapsed((v) => !v)}>
+            {sidebarCollapsed ? "Show Controls" : "Hide Controls"}
+          </button>
+        </div>
       </header>
+
+      <section className="chips compact-strip console-strip" aria-label="simulation-categories">
+        <span className="chip"><strong>Mission Design:</strong> draw area/orbit, set start, generate path</span>
+        <span className="chip"><strong>SITL Execution:</strong> start/pause/stop and waypoint progress</span>
+        <span className="chip"><strong>Diagnostics:</strong> coverage, stream health, debug overlays</span>
+      </section>
 
       <StatusBar items={statusItems} detail={statusDetail} />
 
-      <section className={`layout ${sidebarCollapsed ? "collapsed" : ""}`}>
-        <aside className="panel">
+      <section className={`layout sim-layout ${sidebarCollapsed ? "collapsed" : ""}`}>
+  <aside className="panel console-panel">
           <div className="panel-header">
             <div>
               <h2>Controls</h2>
-              <p className="hint">Actions are grouped by operator workflow and disabled when the current state does not allow them.</p>
+              <p className="hint">Plan mission, run sim, inspect, adjust.</p>
             </div>
           </div>
 
-          <ControlSection title="Connection" hint="Use this first when attaching to MAVLink or resetting the link.">
-            <button disabled={status.connected} onClick={() => runAction("/api/connection/connect")}>Connect</button>
-            <button disabled={!status.connected} onClick={() => runAction("/api/connection/disconnect")}>Disconnect</button>
+          <ControlSection title="Simulation Link" hint="Attach/reset SITL MAVLink.">
+            <button disabled={status.connected} onClick={() => runAction("/api/sim/connection/connect")}>Connect</button>
+            <button disabled={!status.connected} onClick={() => runAction("/api/sim/connection/disconnect")}>Disconnect</button>
             <p className="hint">Link: {status.connection_url || "--"}</p>
           </ControlSection>
 
-          <ControlSection title="Vehicle" hint="Direct vehicle actions remain separate from mission path execution.">
-            <button disabled={!status.connected} onClick={() => runAction("/api/control/arm")}>Arm</button>
-            <button disabled={!status.connected} onClick={() => runAction("/api/control/disarm")}>Disarm</button>
-            <button disabled={!status.connected} onClick={() => runAction("/api/control/takeoff", { alt_m: 10 })}>Takeoff</button>
+          <ControlSection title="SITL Vehicle" hint="Manual sim controls.">
+            <button disabled={!status.connected} onClick={() => runAction("/api/sim/control/arm")}>Arm</button>
+            <button disabled={!status.connected} onClick={() => runAction("/api/sim/control/disarm")}>Disarm</button>
+            <button disabled={!status.connected} onClick={() => runAction("/api/sim/control/takeoff", { alt_m: 10 })}>Takeoff</button>
             <button
               disabled={!status.connected}
-              onClick={() => runAction("/api/control/land", null, { confirmText: "Send LAND to the vehicle?" })}
+              onClick={() => runAction("/api/sim/control/land", null, { confirmText: "Send LAND to the vehicle?" })}
             >
               Land
             </button>
-            <button disabled={!status.connected} onClick={() => runAction("/api/control/rtl")}>RTL</button>
             <label className="hint">Set Mode</label>
             <div className="mode-control">
               <select className="mode-select" value={modeInput} onChange={(e) => setModeInput(e.target.value)}>
@@ -342,39 +354,40 @@ export function App() {
                 <option value="LAND">LAND</option>
                 <option value="STABILIZE">STABILIZE</option>
               </select>
-              <button className="mode-apply-btn" disabled={!status.connected} onClick={() => runAction("/api/control/set_mode", { mode: modeInput })}>Apply Mode</button>
+              <button className="mode-apply-btn" disabled={!status.connected} onClick={() => runAction("/api/sim/control/set_mode", { mode: modeInput })}>Apply Mode</button>
             </div>
-            <button className="danger" disabled={!status.connected} onClick={() => runAction("/api/control/rtl", null, { confirmText: "Abort the current vehicle action and return to launch?" })}>Abort / RTL</button>
+            <button className="danger" disabled={!status.connected} onClick={() => runAction("/api/sim/control/rtl", null, { confirmText: "Abort the current vehicle action and return to launch?" })}>Abort / RTL</button>
           </ControlSection>
 
-          <ControlSection title="Mission" hint="Mission drawing and scan execution controls stay next to the map.">
+          <ControlSection title="Mission Snapshot" hint="Current mission summary.">
             <p className="hint">{missionState.hasMission ? `Loaded • ${missionState.targetCount || 0} waypoints` : "No mission loaded yet."}</p>
-            <p className="hint">
-              {missionState.mode === "orbit_scan"
-                ? "Orbit missions do not use coverage tracking."
-                : (missionState.coverageActive ? "Coverage tracking active." : "Coverage inactive until scan motion starts.")}
-            </p>
+            {missionState.mode === "orbit_scan"
+              ? <p className="hint">Coverage: n/a (orbit)</p>
+              : <p className="hint">Coverage: {missionState.coverageActive ? "active" : "idle"}</p>}
           </ControlSection>
 
-          <ControlSection title="Map / View" hint="Quick operator tools that do not change vehicle behavior.">
+          <ControlSection title="View Tools" hint="UI-only helpers.">
             <button className="small-btn" onClick={() => setSidebarCollapsed((v) => !v)}>
               {sidebarCollapsed ? "Show Control Column" : "Collapse Control Column"}
             </button>
             <button className="small-btn" onClick={resetCoverage}>Reset Coverage</button>
           </ControlSection>
 
-          <ControlSection title="Debug" hint="Use these cues during demos when something looks wrong.">
-            <p className="hint">Backend: {BACKEND_BASE}/api/health</p>
-            <p className="hint">Telemetry stream: {telemetryStream.connected ? "connected" : "reconnecting"}</p>
-            {status.last_error ? <p className="bad hint">{status.last_error}</p> : <p className="hint">No vehicle error reported.</p>}
-          </ControlSection>
+          <details className="inline-collapsible" open={showSimDiagnostics} onToggle={(e) => setShowSimDiagnostics(e.currentTarget.open)}>
+            <summary>Diagnostics</summary>
+            <div className="collapsible-body compact-lines">
+              <p className="hint">Backend: {BACKEND_BASE}/api/sim/health</p>
+              <p className="hint">Telemetry stream: {telemetryStream.connected ? "connected" : "reconnecting"}</p>
+              {status.last_error ? <p className="bad hint">{status.last_error}</p> : <p className="hint">No vehicle errors.</p>}
+            </div>
+          </details>
         </aside>
 
-        <section className="panel map-panel">
+  <section className="panel map-panel console-panel console-main-panel">
           <div className="panel-header">
             <div>
               <h2>Mission Map</h2>
-              <p className="hint">Planned path and live vehicle position stay together for faster operator decisions.</p>
+              <p className="hint">Simulation mission workspace: geometry editing, path generation, SITL playback, and overlays.</p>
             </div>
           </div>
           <MapPanel
@@ -384,14 +397,15 @@ export function App() {
             coverageVersion={coverageVersion}
             onCoverageUpdate={onCoverageUpdate}
             onMissionStateChange={handleMissionStateChange}
+            variant="sim"
           />
         </section>
 
-        <aside className="panel right-rail">
+  <aside className="panel right-rail console-panel">
           <div className="panel-header">
             <div>
               <h2>Telemetry</h2>
-              <p className="hint">Cards highlight key flight values and scan progress without opening another panel.</p>
+              <p className="hint">Compact live values.</p>
             </div>
           </div>
           <TelemetryCards
@@ -419,13 +433,12 @@ export function App() {
             </div>
           ) : null}
 
-          <div className="panel-header compact">
-            <div>
-              <h2>Event Log</h2>
-              <p className="hint">Connection changes, mission transitions, and operator actions appear here.</p>
+          <details className="inline-collapsible" open={showEventLog} onToggle={(e) => setShowEventLog(e.currentTarget.open)}>
+            <summary>Recent Events</summary>
+            <div className="collapsible-body">
+              <EventLog items={eventItems} emptyText="No activity yet." />
             </div>
-          </div>
-          <EventLog items={eventItems} emptyText="No activity yet. Connect a vehicle or load a mission to begin." />
+          </details>
         </aside>
       </section>
     </main>

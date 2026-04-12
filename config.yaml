@@ -1,7 +1,10 @@
 backend:
+  runtime_mode: simulation
   host: 127.0.0.1
   port: 8000
   log_level: INFO
+  real_serial_default_port: ""
+  real_serial_default_baud: 57600
 
 mavlink:
   url: udpin:0.0.0.0:14551
@@ -19,6 +22,7 @@ maps:
   default_zoom: 16
   bounds_w_m: 120.0
   bounds_h_m: 120.0
+  allowed_fence_polygon_lng_lat: []
   track_max_points: 2000
   coverage_cell_size_m: 5.0
   coverage_footprint_radius_m: 6.0

@@ -5,6 +5,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
+from .fence_service import point_inside_polygon
+
 
 def _meters_to_deg_lat(m: float) -> float:
     return float(m) / 111320.0
@@ -194,6 +196,15 @@ class OrbitPlan:
 
 
 class MissionService:
+    TINY_ALT_MIN_M = 1.0
+    TINY_ALT_MAX_M = 6.0
+    TINY_FORWARD_MIN_M = 0.5
+    TINY_FORWARD_MAX_M = 6.0
+    TINY_HOVER_MIN_S = 2.0
+    TINY_HOVER_MAX_S = 20.0
+    TINY_SPEED_MIN_M_S = 0.2
+    TINY_SPEED_MAX_M_S = 2.0
+
     def __init__(self, footprint_radius_m: float = 6.0) -> None:
         self._lock = threading.Lock()
         self._mission_type = "ground_scan"
@@ -560,6 +571,91 @@ class MissionService:
         if normalized:
             return normalized
         return [{"altitude_m": max(1.0, float(altitude_m)), "laps": max(1, int(laps))}]
+
+    def generate_tiny_mission(
+        self,
+        *,
+        start_lng: float,
+        start_lat: float,
+        heading_deg: float | None = None,
+        takeoff_alt_m: float = 3.0,
+        hover_before_s: float = 8.0,
+        forward_m: float = 3.0,
+        hover_after_s: float = 8.0,
+        speed_m_s: float = 1.0,
+        start_scan: bool = False,
+        fence_polygon_lng_lat: list[list[float]] | None = None,
+    ) -> dict[str, Any]:
+        altitude = min(self.TINY_ALT_MAX_M, max(self.TINY_ALT_MIN_M, float(takeoff_alt_m)))
+        hover_1 = min(self.TINY_HOVER_MAX_S, max(self.TINY_HOVER_MIN_S, float(hover_before_s)))
+        hover_2 = min(self.TINY_HOVER_MAX_S, max(self.TINY_HOVER_MIN_S, float(hover_after_s)))
+        move_forward_m = min(self.TINY_FORWARD_MAX_M, max(self.TINY_FORWARD_MIN_M, float(forward_m)))
+        speed = min(self.TINY_SPEED_MAX_M_S, max(self.TINY_SPEED_MIN_M_S, float(speed_m_s)))
+
+        start = [float(start_lng), float(start_lat)]
+        yaw_deg = float(heading_deg) if heading_deg is not None else 0.0
+        yaw_rad = math.radians(yaw_deg)
+        dx = math.sin(yaw_rad) * move_forward_m
+        dy = math.cos(yaw_rad) * move_forward_m
+        target_lng, target_lat = _xy_to_ll(start[0], start[1], dx, dy)
+        target = [float(target_lng), float(target_lat)]
+
+        if fence_polygon_lng_lat is not None:
+            for lng, lat in (start, target):
+                if not point_inside_polygon(float(lng), float(lat), fence_polygon_lng_lat):
+                    raise ValueError("tiny mission target is outside configured fence")
+
+        path_lng_lat = [list(start), list(target), list(start)]
+        profile = [
+            {"step": 1, "action": "takeoff", "alt_m": altitude},
+            {"step": 2, "action": "hold", "duration_s": hover_1},
+            {"step": 3, "action": "move_forward", "distance_m": move_forward_m, "speed_m_s": speed},
+            {"step": 4, "action": "hold", "duration_s": hover_2},
+            {"step": 5, "action": "rtl"},
+        ]
+        out_and_back_m = 2.0 * move_forward_m
+        preview = MissionPreview(
+            expected_coverage_pct=0.0,
+            estimated_time_s=(out_and_back_m / speed) + hover_1 + hover_2,
+            number_of_passes=1,
+            path_length_m=out_and_back_m,
+            sweep_angle_deg=yaw_deg,
+            lead_in_m=0.0,
+            return_to_home_m=move_forward_m,
+            overlap_pct_est=0.0,
+        )
+
+        with self._lock:
+            self._mission_type = "tiny_mission"
+            self._area_polygon = []
+            self._path_waypoints = path_lng_lat
+            self._waypoint_meta = [
+                {"yaw_deg": yaw_deg, "kind": "start"},
+                {"yaw_deg": yaw_deg, "kind": "forward"},
+                {"yaw_deg": yaw_deg, "kind": "return"},
+            ]
+            self._orbit_meta = {
+                "preset": "tiny_mission",
+                "command_profile": profile,
+                "takeoff_alt_m": altitude,
+                "hover_before_s": hover_1,
+                "forward_m": move_forward_m,
+                "hover_after_s": hover_2,
+                "speed_m_s": speed,
+                "heading_deg": yaw_deg,
+            }
+            self._preview = preview
+            self._spacing_m = 0.0
+            self._speed_m_s = speed
+            self._start_position = list(start)
+            self._sim_index = 0
+            self._sim_pos = list(start)
+            self._sim_yaw_deg = yaw_deg
+            self._sim_done = False
+            self._sim_running = bool(start_scan and self._has_path_locked())
+            self._sim_paused = False
+
+        return self.get_path()
 
     def generate_scan(
         self,
