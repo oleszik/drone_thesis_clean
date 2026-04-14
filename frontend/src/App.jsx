@@ -304,7 +304,7 @@ export function App() {
         </div>
         <div className="chips">
           <a className="chip nav-chip" href="/sim">Simulation</a>
-          <a className="chip nav-chip" href="/real-test">Real Mission</a>
+          <a className="chip nav-chip" href="/live-mission">Live Mission Flight</a>
           <button className="small-btn" onClick={() => setSidebarCollapsed((v) => !v)}>
             {sidebarCollapsed ? "Show Controls" : "Hide Controls"}
           </button>

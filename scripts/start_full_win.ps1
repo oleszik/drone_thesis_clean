@@ -1,6 +1,7 @@
 param(
     [int]$BackendPort = 8000,
-    [int]$FrontendPort = 5173
+    [int]$FrontendPort = 5173,
+    [bool]$StartQGroundControl = $true
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +24,38 @@ function Test-PortOpen {
     }
     finally {
         $client.Close()
+    }
+}
+
+function Start-QGroundControlApp {
+    if (-not $StartQGroundControl) {
+        Write-Host "[start_full_win] QGroundControl launch skipped (StartQGroundControl=false)."
+        return
+    }
+
+    if (Get-Process -Name "QGroundControl" -ErrorAction SilentlyContinue) {
+        Write-Host "[start_full_win] QGroundControl already running."
+        return
+    }
+
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "QGroundControl\QGroundControl.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\QGroundControl\QGroundControl.exe")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    foreach ($exe in $candidates) {
+        Start-Process -FilePath $exe | Out-Null
+        Write-Host "[start_full_win] Started QGroundControl: $exe"
+        return
+    }
+
+    try {
+        Start-Process -FilePath "QGroundControl" | Out-Null
+        Write-Host "[start_full_win] Started QGroundControl from PATH."
+        return
+    }
+    catch {
+        Write-Warning "[start_full_win] QGroundControl not found. Install it or add it to PATH."
     }
 }
 
@@ -63,7 +96,7 @@ if (Test-PortOpen -Hostname "127.0.0.1" -Port $BackendPort) {
 }
 else {
     Write-Host "[start_full_win] Starting backend on :$BackendPort"
-    Start-Process -FilePath $venvPython -WorkingDirectory $repoRoot -ArgumentList "-m uvicorn backend.app.main:app --host 127.0.0.1 --port $BackendPort --reload" | Out-Null
+    Start-Process -FilePath $venvPython -WorkingDirectory $repoRoot -ArgumentList "-m uvicorn backend.app.main:app --host 127.0.0.1 --port $BackendPort" | Out-Null
 }
 
 if (Test-PortOpen -Hostname "127.0.0.1" -Port $FrontendPort) {
@@ -72,13 +105,21 @@ if (Test-PortOpen -Hostname "127.0.0.1" -Port $FrontendPort) {
 else {
     Write-Host "[start_full_win] Starting frontend on :$FrontendPort"
     $cmdExe = "$env:WINDIR\System32\cmd.exe"
-    $cmdArgs = "/c","set PATH=C:\Program Files\nodejs;%PATH% && `"$npmCmd`" --prefix frontend run dev -- --host 127.0.0.1 --port $FrontendPort"
+    $cmdArgs = "/c","set PATH=C:\Program Files\nodejs;%PATH% && cd /d `"$frontendDir`" && npm run dev -- --host 127.0.0.1 --port $FrontendPort"
     Start-Process -FilePath $cmdExe -WorkingDirectory $repoRoot -ArgumentList $cmdArgs | Out-Null
 }
 
-Start-Sleep -Seconds 3
-$backendUp = Test-PortOpen -Hostname "127.0.0.1" -Port $BackendPort
-$frontendUp = Test-PortOpen -Hostname "127.0.0.1" -Port $FrontendPort
+Start-QGroundControlApp
+
+$backendUp = $false
+$frontendUp = $false
+$deadline = (Get-Date).AddSeconds(20)
+do {
+    $backendUp = Test-PortOpen -Hostname "127.0.0.1" -Port $BackendPort
+    $frontendUp = Test-PortOpen -Hostname "127.0.0.1" -Port $FrontendPort
+    if ($backendUp -and $frontendUp) { break }
+    Start-Sleep -Seconds 1
+} while ((Get-Date) -lt $deadline)
 
 Write-Host "[start_full_win] Backend listening: $backendUp (http://127.0.0.1:$BackendPort)"
 Write-Host "[start_full_win] Frontend listening: $frontendUp (http://127.0.0.1:$FrontendPort)"

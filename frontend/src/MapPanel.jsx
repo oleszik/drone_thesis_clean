@@ -1862,7 +1862,7 @@ export function MapPanel({
                   key={`cov-${idx}`}
                   pane="mission-coverage-pane"
                   bounds={r.bounds}
-                  pathOptions={{ color: r.color, fillColor: r.color, weight: 0.35, fillOpacity: alpha }}
+                  pathOptions={{ stroke: false, fillColor: r.color, fillOpacity: alpha }}
                 />
               );
             })

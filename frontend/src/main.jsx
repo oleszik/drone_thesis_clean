@@ -15,7 +15,14 @@ function RootRouter() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  if (path === "/real-test") return <RealTest />;
+  React.useEffect(() => {
+    if (path === "/real-test") {
+      window.history.replaceState({}, "", "/live-mission");
+      setPath("/live-mission");
+    }
+  }, [path]);
+
+  if (path === "/live-mission" || path === "/real-test") return <RealTest />;
   if (path === "/sim") return <App />;
   if (path === "/") return <Landing />;
   return <Landing />;

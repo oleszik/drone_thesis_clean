@@ -158,6 +158,24 @@ cd /d "D:\drone_thesis_clean\frontend" && npm install && npm run dev
 
 Open `http://127.0.0.1:5173`.
 
+One-command full start (Windows):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_full_win.ps1
+```
+
+One-command full start (Linux):
+
+```bash
+bash ./scripts/start_full_linux.sh
+```
+
+Linux option to skip auto-launching QGroundControl:
+
+```bash
+START_QGROUNDCONTROL=0 bash ./scripts/start_full_linux.sh
+```
+
 Notes:
 
 - The dashboard frontend is managed from `frontend\package.json`.

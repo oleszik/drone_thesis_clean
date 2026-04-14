@@ -345,7 +345,7 @@ export function RealTest() {
       <header className="top console-header">
         <div>
           <span className="mode-tag">Flight Ops</span>
-          <h1>Real Mission Operator</h1>
+          <h1>Live Mission Flight Console</h1>
           <p className="hint">Preflight gate, field link, and intervention controls.</p>
         </div>
         <div className="chips">
@@ -406,7 +406,7 @@ export function RealTest() {
         {radioStatus.error_message ? <p className="hint bad">Radio error: {String(radioStatus.error_message)}</p> : null}
       </section>
 
-      <section className="panel real-panel real-widget real-widget-wide">
+      <section className="panel real-panel real-widget">
         <div className="panel-header">
           <div>
             <h2>Safety Intervention Controls</h2>

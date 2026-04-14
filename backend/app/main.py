@@ -260,8 +260,10 @@ def create_app() -> FastAPI:
 
     def _recommended_coverage_cell_size(bounds_w_m: float, bounds_h_m: float) -> float:
         area_m2 = max(1.0, float(bounds_w_m) * float(bounds_h_m))
-        footprint_floor = max(1.0, float(cfg.coverage_footprint_radius_m) * 0.35)
-        density_floor = math.sqrt(area_m2 / 18000.0)
+        # Keep cells fine enough for a readable mission heatmap while bounding
+        # total cell count for larger areas.
+        footprint_floor = max(0.75, float(cfg.coverage_footprint_radius_m) * 0.18)
+        density_floor = math.sqrt(area_m2 / 32000.0)
         return min(float(cfg.coverage_cell_size_m), max(footprint_floor, density_floor))
 
     def _reset_coverage_for_mission() -> None:
@@ -292,7 +294,7 @@ def create_app() -> FastAPI:
             coverage.reset(
                 origin_lng=float(waypoints[0][0]),
                 origin_lat=float(waypoints[0][1]),
-                cell_size_m=min(float(cfg.coverage_cell_size_m), max(1.0, float(cfg.coverage_footprint_radius_m) * 0.35)),
+                cell_size_m=min(float(cfg.coverage_cell_size_m), max(0.75, float(cfg.coverage_footprint_radius_m) * 0.18)),
                 roi_polygon_lng_lat=None,
             )
             return

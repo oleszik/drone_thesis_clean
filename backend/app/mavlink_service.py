@@ -61,6 +61,30 @@ class MavlinkService:
         }
         self._track: deque[dict[str, Any]] = deque(maxlen=max(100, int(settings.track_max_points)))
 
+    @staticmethod
+    def _is_autopilot_heartbeat(msg: Any) -> bool:
+        if msg is None or msg.get_type() != "HEARTBEAT":
+            return False
+        try:
+            hb_type = int(getattr(msg, "type", -1))
+            autopilot = int(getattr(msg, "autopilot", -1))
+        except Exception:
+            return False
+        if hb_type == mavutil.mavlink.MAV_TYPE_GCS:
+            return False
+        return autopilot != mavutil.mavlink.MAV_AUTOPILOT_INVALID
+
+    def _wait_for_autopilot_heartbeat(self, master: Any, timeout_s: float) -> Any:
+        deadline = time.monotonic() + max(0.5, float(timeout_s))
+        while time.monotonic() < deadline:
+            remain = max(0.1, deadline - time.monotonic())
+            msg = master.recv_match(type="HEARTBEAT", blocking=True, timeout=remain)
+            if msg is None:
+                continue
+            if self._is_autopilot_heartbeat(msg):
+                return msg
+        raise TimeoutError("no autopilot heartbeat received")
+
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
@@ -345,7 +369,7 @@ class MavlinkService:
                 kwargs["baud"] = int(baud)
         try:
             master = mavutil.mavlink_connection(conn_url, **kwargs)
-            master.wait_heartbeat(timeout=self._settings.heartbeat_timeout_sec)
+            self._wait_for_autopilot_heartbeat(master, self._settings.heartbeat_timeout_sec)
             self._request_data_streams(master)
         except Exception as exc:
             with self._lock:
@@ -410,10 +434,10 @@ class MavlinkService:
     def _handle_msg(self, msg: Any) -> None:
         msg_type = msg.get_type()
         now = time.time()
-        with self._lock:
-            self._telemetry["updated_at_unix"] = now
 
         if msg_type == "HEARTBEAT":
+            if not self._is_autopilot_heartbeat(msg):
+                return
             armed = bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
             mode_name = mavutil.mode_string_v10(msg)
             with self._lock:
@@ -443,6 +467,7 @@ class MavlinkService:
                         "vy_m_s": vy,
                         "vz_m_s": vz,
                         "speed_m_s": speed,
+                        "updated_at_unix": now,
                     }
                 )
                 self._track.append(
@@ -464,12 +489,14 @@ class MavlinkService:
                 self._telemetry["roll_deg"] = roll
                 self._telemetry["pitch_deg"] = pitch
                 self._telemetry["yaw_deg"] = yaw
+                self._telemetry["updated_at_unix"] = now
             return
 
         if msg_type == "SYS_STATUS":
             battery = float(msg.battery_remaining)
             with self._lock:
                 self._telemetry["battery_percent"] = battery if battery >= 0 else None
+                self._telemetry["updated_at_unix"] = now
                 self._status["failsafes"]["battery_low"] = bool(battery >= 0 and battery < 20.0)
             return
 
@@ -479,6 +506,7 @@ class MavlinkService:
             with self._lock:
                 self._telemetry["gps_fix"] = gps_fix
                 self._telemetry["satellites"] = sats
+                self._telemetry["updated_at_unix"] = now
                 self._status["failsafes"]["gps_ok"] = gps_fix >= 3
             return
 
@@ -486,4 +514,5 @@ class MavlinkService:
             flags = int(msg.flags)
             with self._lock:
                 self._telemetry["ekf_ok"] = bool(flags != 0)
+                self._telemetry["updated_at_unix"] = now
                 self._status["failsafes"]["ekf_ok"] = bool(flags != 0)

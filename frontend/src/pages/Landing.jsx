@@ -82,9 +82,9 @@ export function Landing() {
             <span className="mode-enter">Enter Simulation →</span>
           </a>
 
-          <a className="landing-mode-card real" href="/real-test">
+          <a className="landing-mode-card real" href="/live-mission">
             <div className="landing-mode-head">
-              <h2>Real Mission</h2>
+              <h2>Live Mission Flight</h2>
               <span className="mode-tag">Field Ops</span>
             </div>
             <p>Operate with readiness-first safety flow and operator-focused mission planning.</p>
@@ -94,7 +94,7 @@ export function Landing() {
               <li>Safety intervention controls</li>
               <li>Approved mission execution path</li>
             </ul>
-            <span className="mode-enter">Enter Real Mission →</span>
+            <span className="mode-enter">Enter Live Mission Flight →</span>
           </a>
         </section>
 
