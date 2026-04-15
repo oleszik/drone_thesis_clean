@@ -164,10 +164,18 @@ One-command full start (Windows):
 powershell -ExecutionPolicy Bypass -File .\scripts\start_full_win.ps1
 ```
 
-One-command full start (Linux):
+One-command full start (Linux simulation side):
 
 ```bash
-bash ./scripts/start_full_linux.sh
+bash ./scripts/start_full_linux_sim.sh
+```
+
+Default SITL location is ~/ardupilot; set ARDUPILOT_DIR if your ArduPilot checkout is elsewhere.
+
+One-command full start (Linux real-flying side):
+
+```bash
+bash ./scripts/start_full_linux_real.sh
 ```
 
 Linux option to skip auto-launching QGroundControl:

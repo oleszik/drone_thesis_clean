@@ -154,9 +154,15 @@ npm run dev -- --host 127.0.0.1 --port 5173
 Set-Location "D:\GitHub_Repos\drone_thesis_clean"
 powershell -ExecutionPolicy Bypass -File .\scripts\start_full_win.ps1
 
-# One-command full start (Linux)
+# One-command full start (Linux simulation side)
 cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
-bash ./scripts/start_full_linux.sh
+bash ./scripts/start_full_linux_sim.sh
+
+# Default SITL path is ~/ardupilot; set ARDUPILOT_DIR if needed.
+
+# One-command full start (Linux real-flying side)
+cd /home/oleszik/Documents/Github-Repos/drone_thesis_clean
+bash ./scripts/start_full_linux_real.sh
 
 # Linux: skip QGroundControl auto-launch
 START_QGROUNDCONTROL=0 bash ./scripts/start_full_linux.sh
