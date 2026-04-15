@@ -74,7 +74,7 @@ class SitlExecutor:
                 if d0 > self.MAX_START_DISTANCE_M:
                     raise ValueError(
                         f"vehicle too far from mission start ({d0:.0f} m). "
-                        "Restart SITL with --custom-location near your scan area."
+                        "Move the vehicle or update the mission start near the current position."
                     )
             self._waypoints = [list(w) for w in waypoints]
             self._waypoint_meta = [dict(item) for item in waypoint_meta]

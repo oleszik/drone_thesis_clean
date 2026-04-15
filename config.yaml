@@ -17,11 +17,16 @@ frontend:
 
 maps:
   provider: tencent
-  default_center_lng: 118.718885
-  default_center_lat: 32.204407
+  default_mode: vector
+  restrict_to_bounds_default: false
+  default_center_lng: 118.724976
+  default_center_lat: 32.206125
   default_zoom: 16
-  bounds_w_m: 120.0
-  bounds_h_m: 120.0
+  tencent:
+    vector_style: 0
+    hybrid_style: 0
+  bounds_w_m: 2000.0
+  bounds_h_m: 2000.0
   allowed_fence_polygon_lng_lat: []
   track_max_points: 2000
   coverage_cell_size_m: 5.0

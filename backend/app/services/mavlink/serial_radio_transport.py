@@ -97,6 +97,9 @@ class RealRadioService:
     def telemetry(self) -> dict[str, Any]:
         return self._mav.get_telemetry()
 
+    def get_telemetry(self) -> dict[str, Any]:
+        return self._mav.get_telemetry()
+
     def status(self) -> dict[str, Any]:
         st = self._mav.get_status()
         tele = self._mav.get_telemetry()
@@ -138,6 +141,9 @@ class RealRadioService:
             "mav_status": st,
         }
 
+    def get_status(self) -> dict[str, Any]:
+        return self._mav.get_status()
+
     def heartbeat_test(self) -> dict[str, Any]:
         st = self.status()
         hb = st.get("last_heartbeat_age_s")
@@ -171,3 +177,12 @@ class RealRadioService:
 
     def set_mode(self, mode: str) -> dict[str, Any]:
         return self._mav.set_mode(mode)
+
+    def set_speed(self, speed_m_s: float) -> dict[str, Any]:
+        return self._mav.set_speed(speed_m_s)
+
+    def set_home(self, lng: float, lat: float, alt_m: float | None = None) -> dict[str, Any]:
+        return self._mav.set_home(lng=lng, lat=lat, alt_m=alt_m)
+
+    def goto_location(self, lng: float, lat: float, alt_rel_m: float, yaw_deg: float | None = None) -> dict[str, Any]:
+        return self._mav.goto_location(lng=lng, lat=lat, alt_rel_m=alt_rel_m, yaw_deg=yaw_deg)

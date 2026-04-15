@@ -31,6 +31,20 @@ def _xy_to_ll(origin_lng: float, origin_lat: float, x_m: float, y_m: float) -> t
     return lng, lat
 
 
+def _ll_distance_m(a_lng: float, a_lat: float, b_lng: float, b_lat: float) -> float:
+    dx, dy = _ll_to_xy_m(a_lng, a_lat, b_lng, b_lat)
+    return math.hypot(dx, dy)
+
+
+def _path_length_lng_lat_m(path_lng_lat: list[list[float]]) -> float:
+    total = 0.0
+    for idx in range(1, len(path_lng_lat)):
+        a = path_lng_lat[idx - 1]
+        b = path_lng_lat[idx]
+        total += _ll_distance_m(float(a[0]), float(a[1]), float(b[0]), float(b[1]))
+    return total
+
+
 def _rotate_xy(x_m: float, y_m: float, angle_rad: float) -> tuple[float, float]:
     c = math.cos(angle_rad)
     s = math.sin(angle_rad)
@@ -211,6 +225,7 @@ class MissionService:
         self._area_polygon: list[list[float]] = []
         self._orbit_center: list[float] | None = None
         self._start_position: list[float] | None = None
+        self._landing_position: list[float] | None = None
         self._path_waypoints: list[list[float]] = []
         self._waypoint_meta: list[dict[str, Any]] = []
         self._orbit_meta: dict[str, Any] = {}
@@ -275,7 +290,7 @@ class MissionService:
             self._sim_yaw_deg = None
         return {"ok": True, "points": len(cleaned)}
 
-    def set_start_position(self, lng: float, lat: float) -> dict[str, Any]:
+    def set_reference_position(self, lng: float, lat: float) -> dict[str, Any]:
         ll = [float(lng), float(lat)]
         with self._lock:
             self._start_position = ll
@@ -283,7 +298,7 @@ class MissionService:
                 self._sim_pos = list(ll)
                 self._sim_yaw_deg = None
                 self._sim_done = False
-        return {"ok": True, "start_position": ll}
+        return {"ok": True, "reference_position": ll}
 
     def set_orbit_center(self, lng: float, lat: float) -> dict[str, Any]:
         ll = [float(lng), float(lat)]
@@ -302,12 +317,24 @@ class MissionService:
             self._sim_yaw_deg = None
         return {"ok": True, "orbit_center": ll}
 
+    def set_landing_position(self, lng: float, lat: float) -> dict[str, Any]:
+        ll = [float(lng), float(lat)]
+        with self._lock:
+            self._landing_position = ll
+        return {"ok": True, "landing_position": ll}
+
+    def clear_landing_position(self) -> dict[str, Any]:
+        with self._lock:
+            self._landing_position = None
+        return {"ok": True}
+
     def clear(self) -> dict[str, Any]:
         with self._lock:
             self._mission_type = "ground_scan"
             self._area_polygon = []
             self._orbit_center = None
             self._start_position = None
+            self._landing_position = None
             self._path_waypoints = []
             self._waypoint_meta = []
             self._orbit_meta = {}
@@ -668,6 +695,7 @@ class MissionService:
         with self._lock:
             area = list(self._area_polygon)
             start = list(self._start_position) if self._start_position else None
+            landing = list(self._landing_position) if self._landing_position else None
         if len(area) < 3:
             raise ValueError("scan area is not set")
         if start is None:
@@ -684,17 +712,28 @@ class MissionService:
             lng, lat = _xy_to_ll(origin_lng, origin_lat, p[0], p[1])
             path_lng_lat.append([lng, lat])
         path_lng_lat.insert(0, list(start))
-        if path_lng_lat[-1] != list(start):
+        if landing is not None:
+            if path_lng_lat[-1] != list(landing):
+                path_lng_lat.append(list(landing))
+        elif path_lng_lat[-1] != list(start):
             path_lng_lat.append(list(start))
+
+        path_length_m = _path_length_lng_lat_m(path_lng_lat)
+        return_leg_m = _ll_distance_m(
+            float(path_lng_lat[-2][0]),
+            float(path_lng_lat[-2][1]),
+            float(path_lng_lat[-1][0]),
+            float(path_lng_lat[-1][1]),
+        ) if len(path_lng_lat) >= 2 else 0.0
 
         preview = MissionPreview(
             expected_coverage_pct=plan.expected_coverage_pct,
-            estimated_time_s=(plan.path_length_m / speed) if speed > 0 else 0.0,
+            estimated_time_s=(path_length_m / speed) if speed > 0 else 0.0,
             number_of_passes=plan.pass_count,
-            path_length_m=plan.path_length_m,
+            path_length_m=path_length_m,
             sweep_angle_deg=plan.sweep_angle_deg,
             lead_in_m=plan.lead_in_m,
-            return_to_home_m=plan.return_to_home_m,
+            return_to_home_m=return_leg_m,
             overlap_pct_est=plan.overlap_pct_est,
         )
 
@@ -905,6 +944,7 @@ class MissionService:
                 "scan_area_polygon_lng_lat": list(self._area_polygon),
                 "orbit_center_lng_lat": list(self._orbit_center) if self._orbit_center else None,
                 "start_position_lng_lat": list(self._start_position) if self._start_position else None,
+                "landing_position_lng_lat": list(self._landing_position) if self._landing_position else None,
                 "waypoints_lng_lat": list(self._path_waypoints),
                 "waypoint_meta": [dict(item) for item in self._waypoint_meta],
                 "config": {

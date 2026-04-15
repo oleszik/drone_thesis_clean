@@ -64,6 +64,7 @@ export function RealTest() {
   const [planningState, setPlanningState] = useState({
     geometryValid: false,
     hasPath: false,
+    startAltitudeM: 10,
     areaM2: 0,
     perimeterM: 0,
     routeLengthM: 0,
@@ -157,6 +158,18 @@ export function RealTest() {
 
   const bannerTone = toneFromReady(readiness);
 
+  const batteryCheckValue = useMemo(() => {
+    const raw = checksByKey.battery_ok?.value;
+    return raw && typeof raw === "object" ? raw : {};
+  }, [checksByKey]);
+
+  const batteryPercent = useMemo(() => {
+    const fromCheck = Number(batteryCheckValue?.battery_percent);
+    if (Number.isFinite(fromCheck)) return fromCheck;
+    const fromTelemetry = Number(telemetry.battery_percent);
+    return Number.isFinite(fromTelemetry) ? fromTelemetry : null;
+  }, [batteryCheckValue, telemetry.battery_percent]);
+
   const liveCards = useMemo(() => {
     const hb = checksByKey.heartbeat_age_sec?.value;
     return [
@@ -166,8 +179,8 @@ export function RealTest() {
       { label: "EKF", value: checksByKey.ekf_ok?.ok ? "OK" : "BAD", tone: checksByKey.ekf_ok?.ok ? "good" : "bad" },
       {
         label: "Battery",
-        value: fmt(telemetry.battery_percent, "%"),
-        tone: checksByKey.battery_ok?.ok ? "good" : "warn",
+        value: fmt(batteryPercent, "%"),
+        tone: checksByKey.battery_ok?.ok ? "good" : "bad",
       },
       { label: "RC Link", value: checksByKey.rc_link_ok?.ok ? "OK" : "UNKNOWN", tone: checksByKey.rc_link_ok?.ok ? "good" : "warn" },
       { label: "Home", value: checksByKey.home_position_set?.ok ? "SET" : "NOT SET", tone: checksByKey.home_position_set?.ok ? "good" : "bad" },
@@ -178,7 +191,7 @@ export function RealTest() {
         tone: checksByKey.heartbeat_age_sec?.ok ? "good" : "bad",
       },
     ];
-  }, [checksByKey, status.armed, status.mode, telemetry.battery_percent]);
+  }, [batteryPercent, checksByKey, status.armed, status.mode]);
 
   const primaryLiveCards = useMemo(() => {
     const priority = new Set(["Mode", "Armed", "Battery", "GPS", "EKF", "Heartbeat"]);
@@ -226,6 +239,45 @@ export function RealTest() {
       });
       const waypointCount = (payload?.waypoints_lng_lat || []).length;
       setActionMsg(`OK: Tiny Mission ready (${waypointCount} waypoints)`);
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, []);
+
+  const runStartMission = useCallback(async () => {
+    if (!window.confirm("Start the generated mission on the real drone now?")) return;
+    setActionBusy(true);
+    setActionMsg("Starting real mission...");
+    try {
+      const payload = await fetchJson("/api/real/mission/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alt_m: Number(planningState.startAltitudeM || 10),
+          accept_radius_m: 3.0,
+        }),
+      });
+      const count = Number(payload?.waypoint_count || 0);
+      setActionMsg(`OK: mission started${count ? ` (${count} waypoints)` : ""}`);
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, [planningState.startAltitudeM]);
+
+  const runStopMission = useCallback(async () => {
+    if (!window.confirm("Stop the active real mission and command RTL?")) return;
+    setActionBusy(true);
+    setActionMsg("Stopping real mission...");
+    try {
+      await fetchJson("/api/real/mission/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setActionMsg("OK: mission stop / RTL sent");
     } catch (err) {
       setActionMsg(`Error: ${String(err)}`);
     } finally {
@@ -302,12 +354,6 @@ export function RealTest() {
         </div>
       </header>
 
-      <section className="chips compact-strip console-strip" aria-label="real-mission-categories">
-        <span className="chip"><strong>Preflight Gate:</strong> readiness checklist + autonomy blockers</span>
-        <span className="chip"><strong>Field Link:</strong> 3DR serial radio connect/heartbeat</span>
-        <span className="chip"><strong>Safety Actions:</strong> Hold / RTL / Land + Tiny Mission preset</span>
-      </section>
-
       <section className={`real-banner tone-${bannerTone}`}>
         <strong>{bannerLabel(readiness)}</strong>
         <span>
@@ -317,7 +363,8 @@ export function RealTest() {
 
       {loadError ? <div className="real-error">Readiness load error: {loadError}</div> : null}
 
-      <section className="panel real-panel">
+      <div className="real-widget-grid">
+      <section className="panel real-panel real-widget">
         <div className="panel-header">
           <div>
             <h2>Field Link — Radio Connection (3DR X6-433)</h2>
@@ -343,7 +390,7 @@ export function RealTest() {
             </select>
           </label>
         </div>
-        <div className="real-radio-actions">
+        <div className="real-radio-actions real-action-row cols-3">
           <button className="real-connect-btn" disabled={actionBusy || !serialPort} onClick={connectRadio}>Connect</button>
           <button className="real-disconnect-btn" disabled={actionBusy || !radioStatus.connected} onClick={disconnectRadio}>Disconnect</button>
           <button className="real-test-btn" disabled={actionBusy || !radioStatus.connected} onClick={testHeartbeat}>Heartbeat Test</button>
@@ -359,7 +406,7 @@ export function RealTest() {
         {radioStatus.error_message ? <p className="hint bad">Radio error: {String(radioStatus.error_message)}</p> : null}
       </section>
 
-      <section className="panel real-panel">
+      <section className="panel real-panel real-widget real-widget-wide">
         <div className="panel-header">
           <div>
             <h2>Safety Intervention Controls</h2>
@@ -367,7 +414,7 @@ export function RealTest() {
           </div>
           {actionMsg ? <span className="chip">{actionMsg}</span> : null}
         </div>
-        <div className="real-control-row">
+        <div className="real-control-row real-action-row cols-4">
           <button
             className="real-hold-btn"
             disabled={!status.connected || actionBusy}
@@ -389,24 +436,31 @@ export function RealTest() {
           >
             Land
           </button>
+          <button
+            className="real-landhere-btn"
+            disabled={!status.connected || actionBusy}
+            onClick={() => runControlAction("/api/real/control/land_here", "LAND HERE", "Command immediate LAND at current position?")}
+          >
+            Land Here
+          </button>
         </div>
       </section>
 
-      <section className="panel real-panel">
+      <section className="panel real-panel real-widget real-widget-map real-widget-wide">
         <div className="panel-header">
           <div>
             <h2>Mission Planning Map</h2>
-            <p className="hint">Draw mission area, set start, generate path, and verify validity.</p>
+            <p className="hint">Draw mission area, generate path from live GPS reference, and verify validity.</p>
           </div>
         </div>
         <div className="chips compact-strip">
-          <span className="chip"><strong>Geometry:</strong> {planningState.geometryValid ? "valid" : "invalid"}</span>
           <span className="chip"><strong>Path:</strong> {planningState.hasPath ? "ready" : "not generated"}</span>
-          <span className="chip"><strong>Fence:</strong> {planningState.fenceConfigured ? "configured" : "missing"}</span>
-          <span className="chip"><strong>Inside Fence:</strong> {planningState.missionInsideFence ? "yes" : "pending"}</span>
-          <span className="chip"><strong>Area:</strong> {fmt(planningState.areaM2, " m²")}</span>
-          <span className="chip"><strong>Perimeter:</strong> {fmt(planningState.perimeterM, " m")}</span>
-          <span className="chip"><strong>Route:</strong> {fmt(planningState.routeLengthM, " m")}</span>
+          {!planningState.geometryValid ? <span className="chip"><strong>Geometry:</strong> invalid</span> : null}
+          <span className="chip">
+            <strong>Fence:</strong> {planningState.fenceConfigured ? (planningState.hasPath ? (planningState.missionInsideFence ? "mission inside" : "check pending") : "configured") : "missing"}
+          </span>
+          {planningState.areaM2 > 0 ? <span className="chip"><strong>Area:</strong> {fmt(planningState.areaM2, " m²")}</span> : null}
+          {planningState.routeLengthM > 0 ? <span className="chip"><strong>Route:</strong> {fmt(planningState.routeLengthM, " m")}</span> : null}
         </div>
         <MapPanel
           telemetry={telemetry}
@@ -416,28 +470,42 @@ export function RealTest() {
         />
       </section>
 
-      <section className="panel real-panel">
+      <section className="panel real-panel real-widget">
         <div className="panel-header">
           <div>
             <h2>Approved Autonomy Actions</h2>
-            <p className="hint">Enabled only when readiness is green.</p>
+            <p className="hint">Start a generated path or prepare the tiny preset.</p>
           </div>
         </div>
         <div className="real-preset-row">
           <button
+            className="real-connect-btn"
+            disabled={actionBusy || !readiness.can_autonomous || !planningState.validForMissionAction || !status.connected}
+            onClick={runStartMission}
+          >
+            Start Mission
+          </button>
+          <button
+            className="real-rtl-btn"
+            disabled={actionBusy || !status.connected}
+            onClick={runStopMission}
+          >
+            Stop Mission / RTL
+          </button>
+          <button
             className="real-tiny-btn"
-            disabled={actionBusy || !readiness.can_autonomous || !planningState.validForMissionAction}
+            disabled={actionBusy || !status.connected}
             onClick={runTinyMissionPreset}
           >
-            Tiny Mission
+            Generate Tiny Mission
           </button>
         </div>
-        {!readiness.can_autonomous || !planningState.validForMissionAction ? (
-          <p className="hint">Tiny Mission locked: require readiness green + valid generated mission path.</p>
+        {!readiness.can_autonomous || !planningState.validForMissionAction || !status.connected ? (
+          <p className="hint">Start Mission requires a live link, green readiness, and a generated path inside the fence.</p>
         ) : null}
       </section>
 
-      <section className="panel real-panel">
+      <section className="panel real-panel real-widget">
         <div className="panel-header">
           <div>
             <h2>Live Vehicle Status</h2>
@@ -465,7 +533,7 @@ export function RealTest() {
         </details>
       </section>
 
-      <section className="panel real-panel">
+      <section className="panel real-panel real-widget real-widget-wide">
         <div className="panel-header">
           <div>
             <h2>Preflight Readiness Checklist</h2>
@@ -521,23 +589,7 @@ export function RealTest() {
         </details>
       </section>
 
-      <section className="panel real-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Autonomy Blocking Reasons</h2>
-            <p className="hint">Fix these to unlock autonomy.</p>
-          </div>
-        </div>
-        {(readiness.blocking_reasons || []).length ? (
-          <ul className="real-reasons">
-            {readiness.blocking_reasons.map((reason, idx) => (
-              <li key={`${reason}-${idx}`}>{reason}</li>
-            ))}
-          </ul>
-        ) : (
-          <div className="empty-card">No critical blockers currently reported.</div>
-        )}
-      </section>
+      </div>
     </main>
   );
 }

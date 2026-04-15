@@ -8,8 +8,8 @@ from backend.app.main import app
 client = TestClient(app)
 
 
-def test_start_position_rejects_outside_operating_fence() -> None:
-    resp = client.post("/api/mission/start_position", json={"lng": 0.0, "lat": 0.0})
+def test_orbit_center_rejects_outside_operating_fence() -> None:
+    resp = client.post("/api/mission/orbit_center", json={"lng": 0.0, "lat": 0.0})
     assert resp.status_code == 400
     detail = str(resp.json().get("detail", ""))
     assert "outside configured fence" in detail

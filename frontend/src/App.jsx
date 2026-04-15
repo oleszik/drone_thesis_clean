@@ -312,7 +312,7 @@ export function App() {
       </header>
 
       <section className="chips compact-strip console-strip" aria-label="simulation-categories">
-        <span className="chip"><strong>Mission Design:</strong> draw area/orbit, set start, generate path</span>
+        <span className="chip"><strong>Mission Design:</strong> draw area/orbit, generate path from live reference</span>
         <span className="chip"><strong>SITL Execution:</strong> start/pause/stop and waypoint progress</span>
         <span className="chip"><strong>Diagnostics:</strong> coverage, stream health, debug overlays</span>
       </section>

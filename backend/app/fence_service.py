@@ -25,6 +25,27 @@ def _safe_float(v: Any) -> float | None:
     return out
 
 
+def _polygon_area_m2(polygon_lng_lat: list[list[float]] | list[tuple[float, float]] | None) -> float:
+    poly = _clean_polygon(polygon_lng_lat)
+    if len(poly) < 3:
+        return 0.0
+    lat_ref = sum(float(p[1]) for p in poly) / len(poly)
+    meters_per_deg_lng = 111320.0 * max(0.1, abs(math.cos(math.radians(lat_ref))))
+    origin_lng = float(poly[0][0])
+    origin_lat = float(poly[0][1])
+    xy: list[tuple[float, float]] = []
+    for lng, lat in poly:
+        x = (float(lng) - origin_lng) * meters_per_deg_lng
+        y = (float(lat) - origin_lat) * 111320.0
+        xy.append((x, y))
+    acc = 0.0
+    for i in range(len(xy)):
+        x1, y1 = xy[i]
+        x2, y2 = xy[(i + 1) % len(xy)]
+        acc += (x1 * y2) - (x2 * y1)
+    return abs(acc) * 0.5
+
+
 def _clean_polygon(points: list[list[float]] | list[tuple[float, float]] | None) -> list[list[float]]:
     cleaned: list[list[float]] = []
     for p in points or []:
@@ -58,21 +79,27 @@ def _rect_polygon_from_config(cfg: BackendConfig) -> list[list[float]]:
 def get_operating_fence(cfg: BackendConfig) -> dict[str, Any]:
     polygon_cfg = _clean_polygon(cfg.allowed_fence_polygon_lng_lat)
     if len(polygon_cfg) >= 3:
+        area_m2 = _polygon_area_m2(polygon_cfg)
         return {
             "configured": True,
             "source": "polygon",
             "polygon_lng_lat": polygon_cfg,
             "point_count": len(polygon_cfg),
+            "area_m2": area_m2,
+            "max_mission_area_m2": area_m2,
         }
 
     rect_available = float(cfg.map_bounds_w_m) > 1.0 and float(cfg.map_bounds_h_m) > 1.0
     if rect_available:
         rect_poly = _rect_polygon_from_config(cfg)
+        area_m2 = _polygon_area_m2(rect_poly)
         return {
             "configured": True,
             "source": "map_bounds_rect",
             "polygon_lng_lat": rect_poly,
             "point_count": len(rect_poly),
+            "area_m2": area_m2,
+            "max_mission_area_m2": area_m2,
         }
 
     return {
@@ -80,6 +107,8 @@ def get_operating_fence(cfg: BackendConfig) -> dict[str, Any]:
         "source": "none",
         "polygon_lng_lat": [],
         "point_count": 0,
+        "area_m2": 0.0,
+        "max_mission_area_m2": 0.0,
     }
 
 
@@ -128,7 +157,7 @@ def mission_points_from_payload(mission_path: dict[str, Any]) -> list[tuple[floa
                 if lng is not None and lat is not None:
                     points.append((lng, lat))
 
-    for key in ("start_position_lng_lat", "orbit_center_lng_lat"):
+    for key in ("start_position_lng_lat", "orbit_center_lng_lat", "landing_position_lng_lat"):
         p = mission_path.get(key)
         if isinstance(p, (list, tuple)) and len(p) >= 2:
             lng = _safe_float(p[0])
@@ -168,3 +197,23 @@ def validate_mission_payload_inside_fence(mission_path: dict[str, Any], fence: d
         )
 
     return True, "mission points are inside configured fence", {"checked_points": len(points), "outside_points": 0}
+
+
+def validate_mission_area_size_within_fence(
+    area_polygon_lng_lat: list[list[float]] | list[tuple[float, float]],
+    fence: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any]]:
+    area_m2 = _polygon_area_m2(area_polygon_lng_lat)
+    fence_poly = _clean_polygon(fence.get("polygon_lng_lat") if isinstance(fence, dict) else [])
+    max_area_m2 = _safe_float((fence or {}).get("max_mission_area_m2")) if isinstance(fence, dict) else None
+    if max_area_m2 is None or max_area_m2 <= 0.0:
+        max_area_m2 = _polygon_area_m2(fence_poly)
+    if max_area_m2 <= 0.0:
+        return False, "operation fence area is unavailable", {"requested_area_m2": area_m2, "max_area_m2": 0.0}
+    if area_m2 > (max_area_m2 * 1.001):
+        return (
+            False,
+            f"mission area exceeds max allowed area ({area_m2:.1f} m^2 > {max_area_m2:.1f} m^2)",
+            {"requested_area_m2": area_m2, "max_area_m2": max_area_m2},
+        )
+    return True, "mission area size within allowed limit", {"requested_area_m2": area_m2, "max_area_m2": max_area_m2}

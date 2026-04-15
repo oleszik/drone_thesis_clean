@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CircleMarker,
   MapContainer,
-  Marker,
+  Pane,
   Polygon,
   Polyline,
   Rectangle,
@@ -11,83 +11,18 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import L from "leaflet";
 import { LayerToggles } from "./components/LayerToggles";
 import { useLiveStream } from "./hooks/useLiveStream";
+import { fromDisplayLatLng, isTencentProvider, toDisplayLatLng } from "./utils/geoCoords";
 
 const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || "http://127.0.0.1:8000";
 
-function isTencentProvider(mapProvider) {
-  return String(mapProvider || "").toLowerCase() === "tencent";
-}
-
-function outOfChina(lng, lat) {
-  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
-}
-
-function transformLat(x, y) {
-  let ret = -100.0 + (2.0 * x) + (3.0 * y) + (0.2 * y * y) + (0.1 * x * y) + (0.2 * Math.sqrt(Math.abs(x)));
-  ret += ((20.0 * Math.sin(6.0 * x * Math.PI)) + (20.0 * Math.sin(2.0 * x * Math.PI))) * (2.0 / 3.0);
-  ret += ((20.0 * Math.sin(y * Math.PI)) + (40.0 * Math.sin((y / 3.0) * Math.PI))) * (2.0 / 3.0);
-  ret += ((160.0 * Math.sin((y / 12.0) * Math.PI)) + (320 * Math.sin((y * Math.PI) / 30.0))) * (2.0 / 3.0);
-  return ret;
-}
-
-function transformLng(x, y) {
-  let ret = 300.0 + x + (2.0 * y) + (0.1 * x * x) + (0.1 * x * y) + (0.1 * Math.sqrt(Math.abs(x)));
-  ret += ((20.0 * Math.sin(6.0 * x * Math.PI)) + (20.0 * Math.sin(2.0 * x * Math.PI))) * (2.0 / 3.0);
-  ret += ((20.0 * Math.sin(x * Math.PI)) + (40.0 * Math.sin((x / 3.0) * Math.PI))) * (2.0 / 3.0);
-  ret += ((150.0 * Math.sin((x / 12.0) * Math.PI)) + (300.0 * Math.sin((x / 30.0) * Math.PI))) * (2.0 / 3.0);
-  return ret;
-}
-
-function wgs84ToGcj02(lng, lat) {
-  const lon = Number(lng);
-  const latitude = Number(lat);
-  if (!Number.isFinite(lon) || !Number.isFinite(latitude) || outOfChina(lon, latitude)) {
-    return [lon, latitude];
-  }
-  const a = 6378245.0;
-  const ee = 0.00669342162296594323;
-  let dLat = transformLat(lon - 105.0, latitude - 35.0);
-  let dLng = transformLng(lon - 105.0, latitude - 35.0);
-  const radLat = (latitude / 180.0) * Math.PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - (ee * magic * magic);
-  const sqrtMagic = Math.sqrt(magic);
-  dLat = (dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * Math.PI);
-  dLng = (dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * Math.PI);
-  return [lon + dLng, latitude + dLat];
-}
-
-function gcj02ToWgs84(lng, lat) {
-  const lon = Number(lng);
-  const latitude = Number(lat);
-  if (!Number.isFinite(lon) || !Number.isFinite(latitude) || outOfChina(lon, latitude)) {
-    return [lon, latitude];
-  }
-  const [mgLng, mgLat] = wgs84ToGcj02(lon, latitude);
-  return [lon * 2 - mgLng, latitude * 2 - mgLat];
-}
-
 function toLatLng(p, mapProvider = "") {
-  if (!Array.isArray(p) || p.length < 2) return null;
-  let lng = Number(p[0]);
-  let lat = Number(p[1]);
-  if (isTencentProvider(mapProvider)) {
-    [lng, lat] = wgs84ToGcj02(lng, lat);
-  }
-  return [lat, lng];
+  return toDisplayLatLng(p, mapProvider);
 }
 
 function toLngLat(p, mapProvider = "") {
-  if (!Array.isArray(p) || p.length < 2) return null;
-  let lng = Number(p[1]);
-  let lat = Number(p[0]);
-  if (isTencentProvider(mapProvider)) {
-    [lng, lat] = gcj02ToWgs84(lng, lat);
-  }
-  return [lng, lat];
+  return fromDisplayLatLng(p, mapProvider);
 }
 
 function metersToDegLat(m) {
@@ -171,19 +106,24 @@ function polygonHasSelfIntersection(points) {
   return false;
 }
 
-function createDrawVertexIcon(index, opts = {}) {
-  const active = Boolean(opts.active);
-  const hover = Boolean(opts.hover);
-  const first = Boolean(opts.first);
-  const last = Boolean(opts.last);
-  const cls = ["draw-vertex", active ? "active" : "", hover ? "hover" : "", first ? "first" : "", last ? "last" : ""].filter(Boolean).join(" ");
-  const label = Number(index) + 1;
-  return L.divIcon({
-    className: "draw-vertex-icon-wrap",
-    html: `<span class="${cls}">${label}</span>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
+function polygonToBounds(points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  for (const p of points) {
+    if (!Array.isArray(p) || p.length < 2) continue;
+    const lat = Number(p[0]);
+    const lng = Number(p[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+    minLng = Math.min(minLng, lng);
+    maxLng = Math.max(maxLng, lng);
+  }
+  if (![minLat, maxLat, minLng, maxLng].every(Number.isFinite)) return null;
+  return [[minLat, minLng], [maxLat, maxLng]];
 }
 
 function fmtNum(v, digits = 1, suffix = "") {
@@ -248,19 +188,41 @@ function ResizeSync() {
   return null;
 }
 
-function MapCenterSync({ center }) {
+function MapCenterSync({ center, recenterSeq = 0 }) {
   const map = useMap();
-  const lastKeyRef = useRef("");
+  const lastCenterRef = useRef(null);
+  const lastRecenterRef = useRef(0);
   useEffect(() => {
     if (!Array.isArray(center) || center.length < 2) return;
     const lat = Number(center[0]);
     const lng = Number(center[1]);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    const key = `${lat.toFixed(7)},${lng.toFixed(7)}`;
-    if (key === lastKeyRef.current) return;
-    lastKeyRef.current = key;
+    const forceRecenter = Number(recenterSeq) !== lastRecenterRef.current;
+    if (forceRecenter) {
+      lastRecenterRef.current = Number(recenterSeq);
+    }
+    if (!forceRecenter && Array.isArray(lastCenterRef.current)) {
+      const d = llDistanceMeters(lastCenterRef.current, [lat, lng]);
+      if (d < 2.0) return;
+    }
+    lastCenterRef.current = [lat, lng];
     map.setView([lat, lng], map.getZoom(), { animate: false });
-  }, [map, center]);
+  }, [map, center, recenterSeq]);
+  return null;
+}
+
+function MapBoundsSync({ restrictToBounds, bounds }) {
+  const map = useMap();
+  useEffect(() => {
+    if (restrictToBounds && bounds) {
+      map.setMaxBounds(bounds);
+      map.options.maxBoundsViscosity = 0.9;
+      map.panInsideBounds(bounds, { animate: false });
+      return;
+    }
+    map.setMaxBounds(null);
+    map.options.maxBoundsViscosity = 0;
+  }, [bounds, map, restrictToBounds]);
   return null;
 }
 
@@ -298,10 +260,10 @@ function MissionInteractionLock({ interactionLocked }) {
   return null;
 }
 
-function MissionMapEvents({ drawModeRef, startModeRef, orbitModeRef, onDrawPoint, onSetStart, onSetOrbitCenter, onFinishDraw, onDrawMove }) {
+function MissionMapEvents({ drawModeRef, orbitModeRef, landingModeRef, onDrawPoint, onSetOrbitCenter, onSetLandingPosition, onFinishDraw }) {
   useMapEvents({
     mousedown(e) {
-      const active = Boolean(drawModeRef.current || startModeRef.current || orbitModeRef.current);
+      const active = Boolean(drawModeRef.current || orbitModeRef.current || landingModeRef.current);
       if (!active) return;
       if (e.originalEvent?.preventDefault) e.originalEvent.preventDefault();
       if (e.originalEvent?.stopPropagation) e.originalEvent.stopPropagation();
@@ -309,20 +271,16 @@ function MissionMapEvents({ drawModeRef, startModeRef, orbitModeRef, onDrawPoint
     click(e) {
       if (drawModeRef.current) {
         onDrawPoint([e.latlng.lat, e.latlng.lng]);
-      } else if (startModeRef.current) {
-        onSetStart([e.latlng.lat, e.latlng.lng]);
       } else if (orbitModeRef.current) {
         onSetOrbitCenter([e.latlng.lat, e.latlng.lng]);
+      } else if (landingModeRef.current) {
+        onSetLandingPosition([e.latlng.lat, e.latlng.lng]);
       }
     },
     dblclick() {
       if (drawModeRef.current) {
         onFinishDraw();
       }
-    },
-    mousemove(e) {
-      if (!drawModeRef.current) return;
-      onDrawMove([e.latlng.lat, e.latlng.lng]);
     },
   });
   return null;
@@ -344,10 +302,10 @@ export function MapPanel({
   const mapStatePath = isReal ? "/api/map_state" : "/api/sim/map_state";
   const missionPathPath = isReal ? "/api/real/mission/path" : "/api/sim/mission/path";
   const missionAreaPath = isReal ? "/api/mission/area" : "/api/sim/mission/area";
-  const missionStartPath = isReal ? "/api/mission/start_position" : "/api/sim/mission/start_position";
   const missionOrbitCenterPath = isReal ? "/api/mission/orbit_center" : "/api/sim/mission/orbit_center";
-  const missionGenerateOrbitPath = isReal ? "/api/mission/generate_orbit_scan" : "/api/sim/mission/generate_orbit_scan";
-  const missionGenerateScanPath = isReal ? "/api/mission/generate_scan" : "/api/sim/mission/generate_scan";
+  const missionLandingPath = isReal ? "/api/mission/landing_position" : "/api/sim/mission/landing_position";
+  const missionGenerateOrbitPath = isReal ? "/api/real/mission/generate_orbit_scan" : "/api/sim/mission/generate_orbit_scan";
+  const missionGenerateScanPath = isReal ? "/api/real/mission/generate_scan" : "/api/sim/mission/generate_scan";
   const missionClearPath = isReal ? "/api/mission/clear" : "/api/sim/mission/clear";
 
   const [mapState, setMapState] = useState(null);
@@ -359,6 +317,7 @@ export function MapPanel({
   const [missionType, setMissionType] = useState("ground_scan");
   const [orbitCenter, setOrbitCenter] = useState(null);
   const [missionStart, setMissionStart] = useState(null);
+  const [missionLandingPosition, setMissionLandingPosition] = useState(null);
   const [missionPath, setMissionPath] = useState([]);
   const [missionPreview, setMissionPreview] = useState(null);
   const [missionConfig, setMissionConfig] = useState(null);
@@ -383,16 +342,13 @@ export function MapPanel({
     waypoint_count: 0,
     last_error: "",
   });
-  const [selectedDraftIdx, setSelectedDraftIdx] = useState(null);
-  const [hoverDraftIdx, setHoverDraftIdx] = useState(null);
-  const [drawCursor, setDrawCursor] = useState(null);
   const [readiness, setReadiness] = useState({ can_autonomous: false, can_manual: false, blocking_reasons: [] });
 
   const drawModeRef = useRef(false);
-  const startModeRef = useRef(false);
   const orbitModeRef = useRef(false);
+  const landingModeRef = useRef(false);
   const simTickTimerRef = useRef(null);
-  const missionSyncGuardRef = useRef({ area: false, start: false, orbit: false });
+  const missionSyncGuardRef = useRef({ area: false, orbit: false, landing: false });
   const missionConfigDirtyRef = useRef({
     scanSpacingM: false,
     scanSpeedMps: false,
@@ -412,8 +368,16 @@ export function MapPanel({
   const [showCoverage, setShowCoverage] = useState(isSim);
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(false);
   const [showStartPoint, setShowStartPoint] = useState(true);
+  const [showWaypoints, setShowWaypoints] = useState(true);
   const [showCurrentTarget, setShowCurrentTarget] = useState(isSim);
   const [showDebug, setShowDebug] = useState(isSim);
+
+  const [basemapMode, setBasemapMode] = useState("vector");
+  const [tencentVectorStyle, setTencentVectorStyle] = useState(0);
+  const [tencentHybridStyle, setTencentHybridStyle] = useState(0);
+  const [restrictToBounds, setRestrictToBounds] = useState(false);
+  const [recenterSeq, setRecenterSeq] = useState(0);
+  const basemapInitRef = useRef(false);
 
   async function fetchJson(path, init) {
     const resp = await fetch(`${BACKEND_BASE}${path}`, init);
@@ -479,6 +443,10 @@ export function MapPanel({
     const start = Array.isArray(startRaw) && startRaw.length >= 2
       ? toLatLng(startRaw, mapProvider)
       : null;
+    const landingRaw = payload?.landing_position_lng_lat;
+    const landing = Array.isArray(landingRaw) && landingRaw.length >= 2
+      ? toLatLng(landingRaw, mapProvider)
+      : null;
     const path = Array.isArray(payload?.waypoints_lng_lat)
       ? payload.waypoints_lng_lat.map((p) => toLatLng(p, mapProvider)).filter(Boolean)
       : [];
@@ -493,8 +461,9 @@ export function MapPanel({
     if (orbit || !missionSyncGuardRef.current.orbit) {
       setOrbitCenter(orbit);
     }
-    if (start || !missionSyncGuardRef.current.start) {
-      setMissionStart(start);
+    setMissionStart(start);
+    if (landing || !missionSyncGuardRef.current.landing) {
+      setMissionLandingPosition(landing);
     }
     setMissionPath(path);
     setMissionPreview(payload?.coverage_preview || null);
@@ -542,7 +511,7 @@ export function MapPanel({
       ];
       const simRequests = isSim
         ? [fetchJson("/api/sim/mission/sim/state"), fetchJson("/api/sim/sitl/state")]
-        : [Promise.resolve({}), Promise.resolve({})];
+        : [Promise.resolve({}), fetchJson("/api/real/mission/state")];
       const [s, mp, sim, sitl] = await Promise.all([...baseRequests, ...simRequests]);
       setMapState(s || null);
       applyMissionPayload(mp || {}, s?.map_provider);
@@ -553,6 +522,14 @@ export function MapPanel({
           sim_done: Boolean(sim?.sim_done),
           pose: sim?.pose || null,
         });
+        setSitlState({
+          state: String(sitl?.state || "IDLE"),
+          scan_active: Boolean(sitl?.scan_active),
+          waypoint_index: Number(sitl?.waypoint_index || 0),
+          waypoint_count: Number(sitl?.waypoint_count || 0),
+          last_error: String(sitl?.last_error || ""),
+        });
+      } else {
         setSitlState({
           state: String(sitl?.state || "IDLE"),
           scan_active: Boolean(sitl?.scan_active),
@@ -663,9 +640,25 @@ export function MapPanel({
 
   useEffect(() => {
     drawModeRef.current = missionMode === "draw";
-    startModeRef.current = missionMode === "start";
     orbitModeRef.current = missionMode === "orbit_center";
+    landingModeRef.current = missionMode === "landing_position";
   }, [missionMode]);
+
+  useEffect(() => {
+    if (!mapState || basemapInitRef.current) return;
+    const defaultMode = String(mapState?.default_basemap_mode || "vector").toLowerCase();
+    if (["vector", "satellite", "hybrid"].includes(defaultMode)) {
+      setBasemapMode(defaultMode);
+    }
+    if (Number.isFinite(Number(mapState?.tencent_vector_style))) {
+      setTencentVectorStyle(Number(mapState.tencent_vector_style));
+    }
+    if (Number.isFinite(Number(mapState?.tencent_hybrid_style))) {
+      setTencentHybridStyle(Number(mapState.tencent_hybrid_style));
+    }
+    setRestrictToBounds(Boolean(mapState?.restrict_to_bounds_default));
+    basemapInitRef.current = true;
+  }, [mapState]);
 
   const center = useMemo(() => {
     if (mapState?.center_lng_lat) {
@@ -761,7 +754,7 @@ export function MapPanel({
   }, [trail]);
 
   const hasPath = missionPath.length >= 2;
-  const interactionLocked = missionMode === "draw" || missionMode === "start" || missionMode === "orbit_center";
+  const interactionLocked = missionMode === "draw" || missionMode === "orbit_center" || missionMode === "landing_position";
   const simStatusLabel = simState.sim_running
     ? (simState.sim_paused ? "PAUSED" : "RUNNING")
     : "STOPPED";
@@ -791,6 +784,12 @@ export function MapPanel({
       if (selfIntersect) reasons.push("Shape self-intersects");
     }
 
+    const areaM2 = points.length > 2 ? polygonAreaMeters(points) : 0;
+    const maxMissionAreaM2 = Number(mapState?.operating_fence?.max_mission_area_m2);
+    if (points.length > 2 && Number.isFinite(maxMissionAreaM2) && maxMissionAreaM2 > 0 && areaM2 > (maxMissionAreaM2 * 1.001)) {
+      reasons.push(`Area exceeds max allowed (${areaM2.toFixed(1)}m^2 > ${maxMissionAreaM2.toFixed(1)}m^2)`);
+    }
+
     return {
       valid: reasons.length === 0,
       reasons,
@@ -798,10 +797,10 @@ export function MapPanel({
       tooCloseIdx,
       perimeterM: polylineLengthMeters(points) + (points.length > 2 ? llDistanceMeters(points[points.length - 1], points[0]) : 0),
       routeLenM: polylineLengthMeters(points),
-      areaM2: points.length > 2 ? polygonAreaMeters(points) : 0,
+      areaM2,
       canFinish: points.length >= 3 && reasons.length === 0,
     };
-  }, [drawDraft]);
+  }, [drawDraft, mapState?.operating_fence?.max_mission_area_m2]);
 
   const missionAreaIsInvalid = useMemo(() => {
     if (missionType !== "ground_scan") return false;
@@ -819,7 +818,13 @@ export function MapPanel({
     const idx = Math.max(0, Math.min(sitlState.waypoint_index || 0, missionPath.length - 1));
     return missionPath[idx] || null;
   }, [hasPath, missionPath, sitlState.waypoint_index]);
-  const orbitReady = Boolean(orbitCenter && missionStart);
+  const effectiveStartPoint = useMemo(() => {
+    if (missionStart) return missionStart;
+    if (vehicle) return [vehicle.lat, vehicle.lng];
+    if (origin) return origin;
+    return null;
+  }, [missionStart, origin, vehicle]);
+  const orbitReady = Boolean(orbitCenter && effectiveStartPoint);
   const validOrbitLayers = useMemo(
     () => sanitizeOrbitLayers(orbitLayers, orbitAltitudeM, orbitLaps).filter((layer) => Number(layer.altitude_m) > 0 && Number(layer.laps) > 0),
     [orbitAltitudeM, orbitLaps, orbitLayers],
@@ -856,6 +861,7 @@ export function MapPanel({
       geometryValid,
       hasPath,
       missionType,
+      startAltitudeM: Number(missionConfig?.first_altitude_m || missionConfig?.altitude_m || missionConfig?.takeoff_alt_m || 10.0),
       routeLengthM,
       areaM2,
       perimeterM,
@@ -873,6 +879,11 @@ export function MapPanel({
     if (polygonHasSelfIntersection(pointsLatLng)) {
       throw new Error("Shape is invalid: self-intersection detected");
     }
+    const maxAreaM2 = Number(mapState?.operating_fence?.max_mission_area_m2);
+    const reqAreaM2 = polygonAreaMeters(pointsLatLng);
+    if (Number.isFinite(maxAreaM2) && maxAreaM2 > 0 && reqAreaM2 > (maxAreaM2 * 1.001)) {
+      throw new Error(`Area too large (${reqAreaM2.toFixed(1)} m^2 > max ${maxAreaM2.toFixed(1)} m^2)`);
+    }
     const polygonLngLat = pointsLatLng.map((p) => toLngLat(p, mapState?.map_provider)).filter(Boolean);
   const payload = await fetchJson(missionAreaPath, {
       method: "POST",
@@ -880,18 +891,6 @@ export function MapPanel({
       body: JSON.stringify({ polygon_lng_lat: polygonLngLat }),
     });
     setMissionMsg(`Area saved (${payload.points} points)`);
-  }
-
-  async function saveStartToBackend(pointLatLng) {
-  await fetchJson(missionStartPath, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify((() => {
-        const ll = toLngLat(pointLatLng, mapState?.map_provider);
-        return { lng: ll?.[0], lat: ll?.[1] };
-      })()),
-    });
-    setMissionMsg("Start position saved");
   }
 
   async function saveOrbitCenterToBackend(pointLatLng) {
@@ -904,6 +903,23 @@ export function MapPanel({
       })()),
     });
     setMissionMsg("Object center saved");
+  }
+
+  async function saveLandingPositionToBackend(pointLatLng) {
+    await fetchJson(missionLandingPath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify((() => {
+        const ll = toLngLat(pointLatLng, mapState?.map_provider);
+        return { lng: ll?.[0], lat: ll?.[1] };
+      })()),
+    });
+    setMissionMsg("Landing point saved");
+  }
+
+  async function clearLandingPositionFromBackend() {
+    await fetchJson(missionLandingPath, { method: "DELETE" });
+    setMissionMsg("Landing point cleared");
   }
 
   async function runMissionSyncGuard(kind, work) {
@@ -1061,6 +1077,63 @@ export function MapPanel({
     }
   }
 
+  async function handleRealLandHere() {
+    if (!window.confirm("Command immediate LAND at current position?")) return;
+    try {
+      await fetchJson("/api/real/control/land_here", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setMissionMsg("LAND HERE command sent");
+    } catch (err) {
+      setMissionMsg(`Land Here failed: ${String(err)}`);
+    }
+  }
+
+  async function handleRealMissionStart() {
+    if (!window.confirm("Start the generated mission on the real drone now?")) return;
+    try {
+      const state = await fetchJson("/api/real/mission/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alt_m: Number(missionConfig?.first_altitude_m || missionConfig?.altitude_m || missionConfig?.takeoff_alt_m || 10.0),
+          accept_radius_m: 3.0,
+        }),
+      });
+      setSitlState({
+        state: String(state?.state || "IDLE"),
+        scan_active: Boolean(state?.scan_active),
+        waypoint_index: Number(state?.waypoint_index || 0),
+        waypoint_count: Number(state?.waypoint_count || 0),
+        last_error: String(state?.last_error || ""),
+      });
+      setMissionMsg("Real mission started");
+    } catch (err) {
+      setMissionMsg(`Start real mission failed: ${String(err)}`);
+    }
+  }
+
+  async function handleRealMissionStop() {
+    if (!window.confirm("Stop the active real mission and command RTL?")) return;
+    try {
+      const state = await fetchJson("/api/real/mission/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setSitlState({
+        state: String(state?.state || "STOPPED"),
+        scan_active: Boolean(state?.scan_active),
+        waypoint_index: Number(state?.waypoint_index || 0),
+        waypoint_count: Number(state?.waypoint_count || 0),
+        last_error: String(state?.last_error || ""),
+      });
+      setMissionMsg("Real mission stopped");
+    } catch (err) {
+      setMissionMsg(`Stop real mission failed: ${String(err)}`);
+    }
+  }
+
   async function handleClearMission() {
     if (!window.confirm("Clear the current mission geometry and path?")) return;
     try {
@@ -1073,6 +1146,7 @@ export function MapPanel({
       setOrbitCenter(null);
       setMissionType("ground_scan");
       setMissionStart(null);
+      setMissionLandingPosition(null);
       setMissionPath([]);
       setMissionPreview(null);
       setMissionConfig(null);
@@ -1129,9 +1203,6 @@ export function MapPanel({
     const area = [...drawDraft];
     setMissionArea(area);
     setDrawDraft([]);
-    setSelectedDraftIdx(null);
-    setHoverDraftIdx(null);
-    setDrawCursor(null);
     setMissionMode("none");
     try {
       await runMissionSyncGuard("area", async () => {
@@ -1139,19 +1210,6 @@ export function MapPanel({
       });
     } catch (err) {
       setMissionMsg(`Save area failed: ${String(err)}`);
-    }
-  }
-
-  async function handleSetStart(p) {
-    if (missionMode !== "start") return;
-    setMissionStart(p);
-    setMissionMode("none");
-    try {
-      await runMissionSyncGuard("start", async () => {
-        await saveStartToBackend(p);
-      });
-    } catch (err) {
-      setMissionMsg(`Save start failed: ${String(err)}`);
     }
   }
 
@@ -1165,6 +1223,30 @@ export function MapPanel({
       });
     } catch (err) {
       setMissionMsg(`Save object center failed: ${String(err)}`);
+    }
+  }
+
+  async function handleSetLandingPosition(p) {
+    if (missionMode !== "landing_position") return;
+    setMissionLandingPosition(p);
+    setMissionMode("none");
+    try {
+      await runMissionSyncGuard("landing", async () => {
+        await saveLandingPositionToBackend(p);
+      });
+    } catch (err) {
+      setMissionMsg(`Save landing point failed: ${String(err)}`);
+    }
+  }
+
+  async function handleClearLandingPosition() {
+    try {
+      await runMissionSyncGuard("landing", async () => {
+        await clearLandingPositionFromBackend();
+      });
+      setMissionLandingPosition(null);
+    } catch (err) {
+      setMissionMsg(`Clear landing point failed: ${String(err)}`);
     }
   }
 
@@ -1198,68 +1280,121 @@ export function MapPanel({
     });
   }
 
-  const tiles = mapState?.tile_url_template
-    ? `${BACKEND_BASE}${mapState.tile_url_template}`
-    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const supportedBasemapModes = useMemo(() => {
+    const raw = Array.isArray(mapState?.supported_basemap_modes) ? mapState.supported_basemap_modes : ["vector", "satellite", "hybrid"];
+    return raw.map((m) => String(m || "").toLowerCase()).filter((m) => ["vector", "satellite", "hybrid"].includes(m));
+  }, [mapState?.supported_basemap_modes]);
+
+  const restrictionPolygon = useMemo(() => {
+    if (isReal && fencePolygon.length > 2) return fencePolygon;
+    if (boundsPolygon.length > 2) return boundsPolygon;
+    return [];
+  }, [boundsPolygon, fencePolygon, isReal]);
+
+  const restrictionBounds = useMemo(() => polygonToBounds(restrictionPolygon), [restrictionPolygon]);
+
+  const basemapUrls = useMemo(() => {
+    if (!mapState?.tile_url_template) {
+      return {
+        vector: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        satellite: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        hybridVector: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      };
+    }
+    const base = `${BACKEND_BASE}${mapState.tile_url_template}`;
+    if (!isTencentProvider(mapState?.map_provider)) {
+      return {
+        vector: base,
+        satellite: base,
+        hybridVector: base,
+      };
+    }
+    const vectorStyle = String(Math.max(0, Math.round(Number(tencentVectorStyle) || 0)));
+    const hybridStyle = String(Math.max(0, Math.round(Number(tencentHybridStyle) || 0)));
+    return {
+      vector: `${base}?${new URLSearchParams({ mode: "vector", style: vectorStyle }).toString()}`,
+      satellite: `${base}?${new URLSearchParams({ mode: "satellite" }).toString()}`,
+      hybridVector: `${base}?${new URLSearchParams({ mode: "vector", style: hybridStyle }).toString()}`,
+    };
+  }, [mapState?.map_provider, mapState?.tile_url_template, tencentHybridStyle, tencentVectorStyle]);
+
+  const activeBasemapMode = supportedBasemapModes.includes(basemapMode) ? basemapMode : "vector";
   const coverageEnabledForMission = missionType !== "orbit_scan";
 
   function handleDrawUndo() {
     if (missionMode !== "draw") return;
     setDrawDraft((prev) => prev.slice(0, -1));
-    setSelectedDraftIdx((prev) => {
-      if (prev === null || prev <= 0) return null;
-      return prev - 1;
-    });
   }
 
   function handleDrawClear() {
     if (missionMode !== "draw") return;
     setDrawDraft([]);
-    setSelectedDraftIdx(null);
-    setHoverDraftIdx(null);
-    setDrawCursor(null);
     setMissionMsg("Draft cleared");
   }
 
   function handleDrawCancel() {
     if (missionMode !== "draw") return;
     setDrawDraft([]);
-    setSelectedDraftIdx(null);
-    setHoverDraftIdx(null);
-    setDrawCursor(null);
     setMissionMode("none");
     setMissionMsg("Drawing cancelled");
   }
 
-  function handleDeleteSelectedPoint() {
-    if (missionMode !== "draw") return;
-    if (selectedDraftIdx === null || selectedDraftIdx < 0) return;
-    setDrawDraft((prev) => prev.filter((_, idx) => idx !== selectedDraftIdx));
-    setMissionMsg(`Removed point ${selectedDraftIdx + 1}`);
-    setSelectedDraftIdx(null);
-  }
+  useEffect(() => {
+    if (missionMode !== "draw") return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented) return;
+      const targetTag = String(event.target?.tagName || "").toLowerCase();
+      const isEditable = targetTag === "input" || targetTag === "textarea" || event.target?.isContentEditable;
+      if (isEditable) return;
 
-  function handleDraftPointDrag(index, latlng) {
-    setDrawDraft((prev) => {
-      const next = prev.map((p, idx) => (idx === index ? [Number(latlng.lat), Number(latlng.lng)] : p));
-      for (let i = 0; i < next.length; i += 1) {
-        if (i === index) continue;
-        const d = llDistanceMeters(next[i], next[index]);
-        if (d < DRAW_MIN_POINT_SPACING_M) {
-          setMissionMsg(`Dragged point too close to point ${i + 1} (${d.toFixed(2)}m). Move farther apart.`);
-          return prev;
-        }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        handleDrawUndo();
+        return;
       }
-      return next;
-    });
-  }
+      if (event.key === "Backspace") {
+        event.preventDefault();
+        handleDrawUndo();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (draftValidation.canFinish) handleDrawFinish();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleDrawCancel();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [draftValidation.canFinish, missionMode]);
   const autonomyBlocked = !Boolean(readiness.can_autonomous);
   const autonomyBlockReason = readiness.blocking_reasons?.[0] || "readiness not green";
+
+  const waypointDisplay = useMemo(() => {
+    if (!Array.isArray(missionPath) || missionPath.length < 2) return [];
+    if (missionPath.length <= 120) {
+      return missionPath.map((point, idx) => ({ point, idx }));
+    }
+    const out = [];
+    const step = Math.max(1, Math.ceil(missionPath.length / 120));
+    for (let i = 0; i < missionPath.length; i += step) {
+      out.push({ point: missionPath[i], idx: i });
+    }
+    if (out[out.length - 1]?.idx !== missionPath.length - 1) {
+      out.push({ point: missionPath[missionPath.length - 1], idx: missionPath.length - 1 });
+    }
+    return out;
+  }, [missionPath]);
 
   const layerItems = [
     { key: "planned", label: "Planned path", checked: showPlannedPath, onChange: setShowPlannedPath },
     { key: "bounds", label: isReal ? "Fence" : "Bounds", checked: showBounds && (isReal ? hasExplicitFencePolygon : true), onChange: setShowBounds },
-    { key: "start", label: "Start point", checked: showStartPoint, onChange: setShowStartPoint },
+    { key: "start", label: "Reference point", checked: showStartPoint, onChange: setShowStartPoint },
+    { key: "waypoints", label: "Waypoints", checked: showWaypoints, onChange: setShowWaypoints },
   ];
   if (isSim) {
     layerItems.push(
@@ -1276,11 +1411,12 @@ export function MapPanel({
   const legendItems = [
     { label: "Mission area", swatchClass: "swatch-area" },
     { label: "Planned path", swatchClass: "swatch-path" },
+    { label: "Waypoints", swatchClass: "swatch-waypoint" },
     { label: "Actual track", swatchClass: "swatch-track" },
     { label: "Object center", swatchClass: "swatch-target" },
     { label: "Vehicle", swatchClass: "swatch-vehicle" },
     { label: "Current target", swatchClass: "swatch-target" },
-    { label: "Start / origin", swatchClass: "swatch-start" },
+    { label: "Reference / origin", swatchClass: "swatch-start" },
   ];
   if (isSim && coverageEnabledForMission) {
     legendItems.splice(4, 0,
@@ -1293,16 +1429,18 @@ export function MapPanel({
   return (
     <>
       <div className="map-ops-header">
-        <div className="map-toolbar compact-strip">
-          {isSim ? <span className="chip"><strong>Bridge:</strong> {bridgeStream.connected ? "live" : "reconnecting"}</span> : null}
-          {isSim && coverageEnabledForMission ? <span className="chip"><strong>Coverage:</strong> {coverageStream.connected ? "live" : "reconnecting"}</span> : null}
-          {isSim ? <span className="chip"><strong>Track:</strong> {trackStream.connected ? "live" : "reconnecting"}</span> : null}
-          {isSim ? <span className="chip"><strong>Executor:</strong> {sitlState.state}</span> : null}
-          {isSim ? <span className="chip"><strong>Target:</strong> {currentTargetOrdinal || "--"} / {sitlState.waypoint_count || missionPath.length || "--"}</span> : null}
-          <span className="chip"><strong>Mission Type:</strong> {missionTypeLabel(missionType)}</span>
-          {isReal ? <span className="chip"><strong>Fence:</strong> {mapState?.operating_fence?.configured ? "configured" : "missing"}</span> : null}
-          <span className="chip"><strong>Readiness:</strong> {readiness.can_autonomous ? "green" : (readiness.can_manual ? "manual only" : "blocked")}</span>
-        </div>
+        {isSim ? (
+          <div className="map-toolbar compact-strip">
+            <span className="chip"><strong>Bridge:</strong> {bridgeStream.connected ? "live" : "reconnecting"}</span>
+            {coverageEnabledForMission ? <span className="chip"><strong>Coverage:</strong> {coverageStream.connected ? "live" : "reconnecting"}</span> : null}
+            <span className="chip"><strong>Track:</strong> {trackStream.connected ? "live" : "reconnecting"}</span>
+            <span className="chip"><strong>Executor:</strong> {sitlState.state}</span>
+            <span className="chip"><strong>Target:</strong> {currentTargetOrdinal || "--"} / {sitlState.waypoint_count || missionPath.length || "--"}</span>
+            <span className="chip"><strong>Basemap:</strong> {activeBasemapMode}</span>
+            <span className="chip"><strong>Mission Type:</strong> {missionTypeLabel(missionType)}</span>
+            <span className="chip"><strong>Readiness:</strong> {readiness.can_autonomous ? "green" : (readiness.can_manual ? "manual only" : "blocked")}</span>
+          </div>
+        ) : null}
 
         <div className="map-toolbar action-toolbar">
           <div className="map-action-group">
@@ -1322,30 +1460,69 @@ export function MapPanel({
               <button className="small-btn" onClick={() => {
                 setMissionMode("draw");
                 setDrawDraft([]);
-                setSelectedDraftIdx(null);
-                setHoverDraftIdx(null);
-                setDrawCursor(null);
-                setMissionMsg("Draw mode: click to add points, drag points to edit, then Finish Shape");
-              }}>Draw Area</button>
+                setMissionMsg("Draw mode: click map to add points, then double-click or press Enter to finish");
+              }}>Draw Scan Area</button>
             ) : (
               <button className="small-btn" onClick={() => {
                 setMissionMode("orbit_center");
                 setMissionMsg("Orbit center mode: click map to place the object center");
               }}>Set Object Center</button>
             )}
-            <button className="small-btn" onClick={() => {
-              setMissionMode("start");
-              setMissionMsg("Start mode: click map to place drone start");
-            }}>Set Start</button>
             <button
               className="small-btn"
-              disabled={geometryInvalid || autonomyBlocked || simState.sim_running || sitlState.scan_active || (missionType === "orbit_scan" ? !orbitReady : false)}
-              title={geometryInvalid ? "Geometry invalid: fix drawing before generating" : (autonomyBlocked ? `Autonomy blocked: ${autonomyBlockReason}` : "")}
+              disabled={geometryInvalid || simState.sim_running || sitlState.scan_active || (missionType === "orbit_scan" ? !orbitReady : false)}
+              title={geometryInvalid ? "Geometry invalid: fix drawing before generating" : ""}
               onClick={handleGeneratePath}
             >
               {missionType === "orbit_scan" ? "Generate Orbit" : "Generate Path"}
             </button>
+            <button className="small-btn" onClick={() => {
+              setMissionMode("landing_position");
+              setMissionMsg("Landing point mode: click map to place end-of-scan landing point");
+            }}>Set Landing</button>
+            <button className="small-btn" disabled={!missionLandingPosition} onClick={handleClearLandingPosition}>Clear Landing</button>
             <button className="small-btn" onClick={handleClearMission}>Clear</button>
+          </div>
+
+          <div className="map-action-group basemap-group">
+            <span className="group-title">Basemap</span>
+            <div className="mode-pill-group" role="group" aria-label="Basemap mode">
+              {supportedBasemapModes.map((mode) => (
+                <button
+                  key={`basemap-${mode}`}
+                  type="button"
+                  className={`small-btn mode-pill ${basemapMode === mode ? "active" : ""}`}
+                  onClick={() => setBasemapMode(mode)}
+                >
+                  {mode === "vector" ? "Vector" : mode === "satellite" ? "Satellite" : "Hybrid"}
+                </button>
+              ))}
+            </div>
+            {isTencentProvider(mapState?.map_provider) && basemapMode !== "satellite" ? (
+              <label className="map-input">Style ID
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={basemapMode === "hybrid" ? tencentHybridStyle : tencentVectorStyle}
+                  onChange={(e) => {
+                    const next = Math.max(0, Math.round(Number(e.target.value) || 0));
+                    if (basemapMode === "hybrid") setTencentHybridStyle(next);
+                    else setTencentVectorStyle(next);
+                  }}
+                />
+              </label>
+            ) : null}
+            <label className="toggle-row compact-toggle">
+              <input
+                type="checkbox"
+                checked={restrictToBounds}
+                onChange={(e) => setRestrictToBounds(e.target.checked)}
+                disabled={!restrictionBounds}
+              />
+              <span>Lock to boundary</span>
+            </label>
+            <button type="button" className="small-btn" onClick={() => setRecenterSeq((n) => n + 1)}>Recenter</button>
           </div>
 
           {isSim ? <div className="map-action-group run-group">
@@ -1363,6 +1540,34 @@ export function MapPanel({
               </>
             )}
           </div> : null}
+
+          {isReal ? (
+            <div className="map-action-group run-group">
+              <span className="group-title">Mission</span>
+              <button
+                className="small-btn"
+                disabled={autonomyBlocked || !hasPath || sitlState.scan_active}
+                title={autonomyBlocked ? `Autonomy blocked: ${autonomyBlockReason}` : (!hasPath ? "Generate a mission path first" : "")}
+                onClick={handleRealMissionStart}
+              >
+                Start Mission
+              </button>
+              <button
+                className="small-btn"
+                disabled={!sitlState.scan_active && sitlState.state !== "ARMING" && sitlState.state !== "TAKEOFF" && sitlState.state !== "RUN_PATH"}
+                onClick={handleRealMissionStop}
+              >
+                Stop Mission / RTL
+              </button>
+              <button
+                className="small-btn danger"
+                title={!mavConnected ? "No live vehicle link; command may fail" : ""}
+                onClick={handleRealLandHere}
+              >
+                Land Here
+              </button>
+            </div>
+          ) : null}
 
           <div className="map-action-group">
             <span className="group-title">Path Settings</span>
@@ -1483,67 +1688,18 @@ export function MapPanel({
 
         {missionMode === "draw" ? (
           <div className="map-toolbar draw-helper-toolbar">
-            <span className="chip draw-instructions">Click map to add points • Drag point to adjust • Select point then Delete • Finish to close shape</span>
-            <button className="small-btn draw-btn" disabled={drawDraft.length === 0} onClick={handleDrawUndo}>Undo</button>
-            <button className="small-btn draw-btn" disabled={drawDraft.length === 0} onClick={handleDrawClear}>Clear</button>
-            <button className="small-btn draw-btn danger" disabled={selectedDraftIdx === null} onClick={handleDeleteSelectedPoint}>Delete Selected</button>
-            <button className="small-btn draw-btn" disabled={!draftValidation.canFinish} onClick={handleDrawFinish}>Finish Shape</button>
+            <span className="chip draw-instructions">Click to add points, then double-click map or press Enter to save.</span>
+            <button className="small-btn draw-btn" disabled={drawDraft.length === 0} onClick={handleDrawUndo}>Undo Last</button>
+            <button className="small-btn draw-btn" disabled={drawDraft.length === 0} onClick={handleDrawClear}>Clear Draft</button>
+            <button className="small-btn draw-btn" disabled={!draftValidation.canFinish} onClick={handleDrawFinish}>Save Area</button>
             <button className="small-btn draw-btn" onClick={handleDrawCancel}>Cancel</button>
             <span className="chip">Route: {fmtNum(draftValidation.routeLenM, 1, " m")}</span>
             <span className="chip">Perimeter: {fmtNum(draftValidation.perimeterM, 1, " m")}</span>
             <span className="chip">Area: {fmtNum(draftValidation.areaM2, 1, " m²")}</span>
+            <span className="chip">Keys: Ctrl/Cmd+Z undo • Enter save • Esc cancel</span>
           </div>
         ) : null}
       </div>
-
-      <div className="mission-preview">
-        <span>Mode: {missionTypeLabel(missionType)}</span>
-        {isSim ? <span>Sim: {simStatusLabel}</span> : null}
-        {isReal ? <span>Geometry: {geometryInvalid ? "invalid" : "valid"}</span> : null}
-        {isReal ? <span>Area: {fmtNum(missionArea.length >= 3 ? polygonAreaMeters(missionArea) : 0, 1, " m²")}</span> : null}
-        {isReal ? <span>Perimeter: {fmtNum(missionArea.length >= 3 ? (polylineLengthMeters(missionArea) + llDistanceMeters(missionArea[missionArea.length - 1], missionArea[0])) : 0, 1, " m")}</span> : null}
-        {isReal ? <span>Route: {fmtNum(polylineLengthMeters(missionPath), 1, " m")}</span> : null}
-        {isSim ? (
-          <>
-            {missionType === "orbit_scan"
-              ? <span>Radius: {fmtNum(missionConfig?.radius_m, 1, " m")}</span>
-              : <span>Spacing: {fmtNum(missionConfig?.spacing_m, 1, " m")}</span>}
-            {missionType === "orbit_scan"
-              ? <span>Altitude: {fmtNum(missionConfig?.altitude_m, 1, " m")}</span>
-              : <span>Expected Coverage: {fmtNum(missionPreview?.expected_coverage_pct, 1, "%")}</span>}
-            {missionType === "orbit_scan"
-              ? <span>Laps: {missionConfig?.laps ?? "--"}</span>
-              : <span>Overlap Est: {fmtNum(missionPreview?.overlap_pct_est, 1, "%")}</span>}
-            {missionType === "orbit_scan" && Array.isArray(missionConfig?.layers) && missionConfig.layers.length > 1
-              ? <span>Layers: {missionConfig.layers.map((layer) => `${layer.altitude_m}m x${layer.laps}`).join(", ")}</span>
-              : null}
-            {missionType === "orbit_scan"
-              ? <span>Pts/Lap: {missionConfig?.points_per_lap ?? "--"}</span>
-              : null}
-            {missionType === "ground_scan" ? <span>Expected Coverage: {fmtNum(missionPreview?.expected_coverage_pct, 1, "%")}</span> : null}
-            <span>Estimated Time: {fmtNum(missionPreview?.estimated_time_s, 1, " s")}</span>
-            <span>Passes: {missionPreview?.number_of_passes ?? "--"}</span>
-            <span>Path Length: {fmtNum(missionPreview?.path_length_m, 1, " m")}</span>
-            {missionType === "ground_scan" ? <span>Sweep Angle: {fmtNum(missionPreview?.sweep_angle_deg, 1, " deg")}</span> : null}
-            {missionType === "ground_scan" ? <span>Lead-In: {fmtNum(missionPreview?.lead_in_m, 1, " m")}</span> : null}
-            {missionType === "ground_scan" ? <span>Return: {fmtNum(missionPreview?.return_to_home_m, 1, " m")}</span> : null}
-          </>
-        ) : null}
-      </div>
-
-      {missionMsg ? <p className="hint">{missionMsg}</p> : null}
-      {missionMode === "draw" && !draftValidation.valid ? (
-        <div className="map-banner danger">
-          Invalid drawing: {draftValidation.reasons.join(" • ")}
-        </div>
-      ) : null}
-      {missionAreaIsInvalid ? <div className="map-banner danger">Mission area is invalid (self-intersection). Edit and redraw area before generating.</div> : null}
-      {!hasPath ? <div className="map-banner">{missionType === "orbit_scan" ? "No orbit mission loaded yet. Set an object center, set a start point, then generate an orbit." : "No mission loaded yet. Draw a scan area, set a start point, then generate a path."}</div> : null}
-  {isSim && !mavConnected && !simState.sim_running ? <div className="map-banner subdued">No live vehicle connected. You can still prepare a mission and use local simulation.</div> : null}
-  {isSim && coverageEnabledForMission && !(Array.isArray(coverage?.covered_cells) && coverage.covered_cells.length) && !sitlState.scan_active ? <div className="map-banner subdued">Coverage overlay is idle until scan motion begins.</div> : null}
-  {isSim && sitlState.last_error ? <div className="map-banner danger">Mission executor error: {sitlState.last_error}</div> : null}
-
-  <LayerToggles items={layerItems} legend={legendItems} />
 
       <MapContainer
         key={`${sidebarVersion}`}
@@ -1554,95 +1710,143 @@ export function MapPanel({
         className="leaflet-map"
         preferCanvas
         doubleClickZoom={false}
+        zoomControl={false}
       >
         <ResizeSync />
-        <MapCenterSync center={center} />
+        <MapCenterSync center={center} recenterSeq={recenterSeq} />
+        <MapBoundsSync restrictToBounds={restrictToBounds} bounds={restrictionBounds} />
         <MissionInteractionLock interactionLocked={interactionLocked} />
         <MissionMapEvents
           drawModeRef={drawModeRef}
-          startModeRef={startModeRef}
           orbitModeRef={orbitModeRef}
+          landingModeRef={landingModeRef}
           onDrawPoint={handleDrawClick}
-          onSetStart={handleSetStart}
           onSetOrbitCenter={handleSetOrbitCenter}
+          onSetLandingPosition={handleSetLandingPosition}
           onFinishDraw={handleDrawFinish}
-          onDrawMove={setDrawCursor}
         />
-        <TileLayer url={tiles} maxZoom={20} tileSize={256} detectRetina={false} />
+        <Pane name="mission-coverage-pane" style={{ zIndex: 410 }} />
+        <Pane name="mission-area-pane" style={{ zIndex: 420 }} />
+        <Pane name="mission-path-pane" style={{ zIndex: 430 }} />
+        <Pane name="mission-waypoint-pane" style={{ zIndex: 440 }} />
+        <Pane name="mission-focus-pane" style={{ zIndex: 450 }} />
+        <Pane name="mission-vehicle-pane" style={{ zIndex: 460 }} />
+
+        {activeBasemapMode === "vector" ? (
+          <TileLayer
+            key={`basemap-vector-${basemapUrls.vector}`}
+            url={basemapUrls.vector}
+            maxZoom={20}
+            tileSize={256}
+            detectRetina={false}
+          />
+        ) : null}
+
+        {activeBasemapMode === "satellite" ? (
+          <TileLayer
+            key={`basemap-satellite-${basemapUrls.satellite}`}
+            url={basemapUrls.satellite}
+            maxZoom={20}
+            tileSize={256}
+            detectRetina={false}
+          />
+        ) : null}
+
+        {activeBasemapMode === "hybrid" ? (
+          <>
+            <TileLayer
+              key={`basemap-hybrid-sat-${basemapUrls.satellite}`}
+              url={basemapUrls.satellite}
+              maxZoom={20}
+              tileSize={256}
+              detectRetina={false}
+            />
+            <TileLayer
+              key={`basemap-hybrid-vec-${basemapUrls.hybridVector}`}
+              url={basemapUrls.hybridVector}
+              maxZoom={20}
+              tileSize={256}
+              detectRetina={false}
+              opacity={0.6}
+            />
+          </>
+        ) : null}
 
         {showBounds && (isReal ? fencePolygon.length > 2 : ((missionArea.length > 2 || hasPath) && boundsPolygon.length > 2)) ? (
-          <Polygon positions={isReal ? fencePolygon : boundsPolygon} pathOptions={{ color: "#0f766e", weight: 2, fillOpacity: 0.08 }} />
+          <Polygon pane="mission-area-pane" positions={isReal ? fencePolygon : boundsPolygon} pathOptions={{ color: "#0f766e", weight: 2.2, fillOpacity: 0.06, opacity: 0.8 }} />
         ) : null}
 
         {missionArea.length > 2 ? (
-          <Polygon positions={missionArea} pathOptions={{ color: "#2563eb", weight: 3.5, fillColor: "#60a5fa", fillOpacity: 0.16 }} />
+          <Polygon pane="mission-area-pane" positions={missionArea} pathOptions={{ color: "#1d4ed8", weight: 3.8, fillColor: "#60a5fa", fillOpacity: 0.18 }} />
         ) : null}
 
         {missionType === "orbit_scan" && orbitCenter ? (
-          <CircleMarker center={orbitCenter} radius={7} pathOptions={{ color: "#7c3aed", fillOpacity: 0.9 }}>
+          <CircleMarker pane="mission-focus-pane" center={orbitCenter} radius={7} pathOptions={{ color: "#7c3aed", weight: 2, fillOpacity: 0.95 }}>
             <Tooltip permanent direction="top">Object Center</Tooltip>
           </CircleMarker>
         ) : null}
 
         {drawDraft.length > 1 ? (
-          <Polyline positions={drawDraft} pathOptions={{ color: "#1d4ed8", weight: 3.5, dashArray: "6,6" }} />
+          <Polyline pane="mission-path-pane" positions={drawDraft} pathOptions={{ color: "#1d4ed8", weight: 3.5, dashArray: "6,6" }} />
         ) : null}
 
         {missionMode === "draw" && drawDraft.length > 2 ? (
-          <Polygon positions={drawDraft} pathOptions={{ color: "#2563eb", weight: 2.5, fillColor: "#93c5fd", fillOpacity: 0.12 }} />
-        ) : null}
-
-        {missionMode === "draw" && drawDraft.length > 0 && drawCursor ? (
-          <Polyline positions={[drawDraft[drawDraft.length - 1], drawCursor]} pathOptions={{ color: "#0ea5e9", weight: 2.5, dashArray: "4,8", opacity: 0.9 }} />
+          <Polygon pane="mission-area-pane" positions={drawDraft} pathOptions={{ color: "#2563eb", weight: 2.5, fillColor: "#93c5fd", fillOpacity: 0.12 }} />
         ) : null}
 
         {missionMode === "draw"
           ? drawDraft.map((point, idx) => (
-              <Marker
+              <CircleMarker
                 key={`draft-point-${idx}`}
-                position={point}
-                icon={createDrawVertexIcon(idx, {
-                  active: selectedDraftIdx === idx,
-                  hover: hoverDraftIdx === idx,
-                  first: idx === 0,
-                  last: idx === drawDraft.length - 1,
-                })}
-                draggable
-                eventHandlers={{
-                  click: () => setSelectedDraftIdx(idx),
-                  mouseover: () => setHoverDraftIdx(idx),
-                  mouseout: () => setHoverDraftIdx(null),
-                  dragend: (e) => {
-                    const ll = e.target.getLatLng();
-                    handleDraftPointDrag(idx, ll);
-                  },
-                }}
+                pane="mission-waypoint-pane"
+                center={point}
+                radius={5}
+                pathOptions={{ color: "#1d4ed8", fillColor: "#93c5fd", fillOpacity: 0.95, weight: 1.4 }}
               >
                 <Tooltip direction="top" permanent>
-                  {idx === 0 ? "Start" : (idx === drawDraft.length - 1 ? "End" : `P${idx + 1}`)}
+                  {`P${idx + 1}`}
                 </Tooltip>
-              </Marker>
+              </CircleMarker>
             ))
           : null}
 
         {showPlannedPath && missionPath.length > 1 ? (
-          <Polyline positions={missionPath} pathOptions={{ color: "#be123c", weight: 3, opacity: 0.95 }} />
+          <Polyline pane="mission-path-pane" positions={missionPath} pathOptions={{ color: "#be123c", weight: 4.2, opacity: 0.98 }} />
         ) : null}
 
-        {showStartPoint && missionStart ? (
-          <CircleMarker center={missionStart} radius={7} pathOptions={{ color: "#f59e0b", fillOpacity: 0.9 }}>
-            <Tooltip permanent direction="top">Drone Start</Tooltip>
+        {showWaypoints
+          ? waypointDisplay.map((item) => (
+              <CircleMarker
+                key={`waypoint-${item.idx}`}
+                pane="mission-waypoint-pane"
+                center={item.point}
+                radius={3.6}
+                pathOptions={{ color: "#7f1d1d", fillColor: "#fecaca", fillOpacity: 0.92, weight: 1.2, opacity: 0.95 }}
+              />
+            ))
+          : null}
+
+        {showStartPoint && effectiveStartPoint ? (
+          <CircleMarker pane="mission-focus-pane" center={effectiveStartPoint} radius={7} pathOptions={{ color: "#f59e0b", fillOpacity: 0.92, weight: 2 }}>
+            <Tooltip permanent direction="top">Reference Start</Tooltip>
+          </CircleMarker>
+        ) : null}
+
+        {missionLandingPosition ? (
+          <CircleMarker pane="mission-focus-pane" center={missionLandingPosition} radius={7} pathOptions={{ color: "#fb7185", fillOpacity: 0.92, weight: 2 }}>
+            <Tooltip permanent direction="top">Landing Point</Tooltip>
           </CircleMarker>
         ) : null}
 
         {showTrack && trail.length > 1 ? (
-          <Polyline positions={trail} pathOptions={{ color: "#2563eb", weight: 3, opacity: 0.8 }} />
+          <Polyline pane="mission-path-pane" positions={trail} pathOptions={{ color: "#2563eb", weight: 3.2, opacity: 0.78 }} />
         ) : null}
 
         {showBreadcrumbs
           ? breadcrumbs.map((point, idx) => (
               <CircleMarker
                 key={`crumb-${idx}`}
+                pane="mission-waypoint-pane"
                 center={point}
                 radius={3}
                 pathOptions={{ color: "#2563eb", fillOpacity: 0.55, opacity: 0.8 }}
@@ -1656,39 +1860,91 @@ export function MapPanel({
               return (
                 <Rectangle
                   key={`cov-${idx}`}
+                  pane="mission-coverage-pane"
                   bounds={r.bounds}
-                  pathOptions={{ color: r.color, fillColor: r.color, weight: 0.4, fillOpacity: alpha }}
+                  pathOptions={{ color: r.color, fillColor: r.color, weight: 0.35, fillOpacity: alpha }}
                 />
               );
             })
           : null}
 
         {showDebug && footprint ? (
-          <Polygon positions={footprint} pathOptions={{ color: "#f97316", weight: 2, fillOpacity: 0.05 }} />
+          <Polygon pane="mission-area-pane" positions={footprint} pathOptions={{ color: "#f97316", weight: 2, fillOpacity: 0.05 }} />
         ) : null}
 
-        {origin && missionStart && showStartPoint ? (
-          <CircleMarker center={origin} radius={6} pathOptions={{ color: "#f59e0b", fillOpacity: 0.8 }}>
+        {origin && showStartPoint && (!effectiveStartPoint || llDistanceMeters(origin, effectiveStartPoint) > 1.0) ? (
+          <CircleMarker pane="mission-focus-pane" center={origin} radius={6} pathOptions={{ color: "#f59e0b", fillOpacity: 0.82, weight: 2 }}>
             <Tooltip permanent direction="top">Origin</Tooltip>
           </CircleMarker>
         ) : null}
 
         {showCurrentTarget && missionActive && currentTarget ? (
-          <CircleMarker center={currentTarget} radius={8} pathOptions={{ color: "#7c3aed", fillOpacity: 0.9 }}>
+          <CircleMarker pane="mission-focus-pane" center={currentTarget} radius={8} pathOptions={{ color: "#7c3aed", fillOpacity: 0.95, weight: 2 }}>
             <Tooltip permanent direction="top">Current Target</Tooltip>
           </CircleMarker>
         ) : null}
 
         {vehicle ? (
-          <CircleMarker center={[vehicle.lat, vehicle.lng]} radius={7} pathOptions={{ color: "#dc2626", fillOpacity: 0.9 }}>
+          <CircleMarker pane="mission-vehicle-pane" center={[vehicle.lat, vehicle.lng]} radius={7} pathOptions={{ color: "#dc2626", fillOpacity: 0.95, weight: 2 }}>
             <Tooltip permanent direction="top">Vehicle</Tooltip>
           </CircleMarker>
         ) : null}
 
         {headingLine ? (
-          <Polyline positions={headingLine} pathOptions={{ color: "#dc2626", weight: 3 }} />
+          <Polyline pane="mission-vehicle-pane" positions={headingLine} pathOptions={{ color: "#dc2626", weight: 3.2 }} />
         ) : null}
       </MapContainer>
+
+      {isSim ? <div className="mission-preview">
+        <span>Mode: {missionTypeLabel(missionType)}</span>
+        <span>Sim: {simStatusLabel}</span>
+        {missionType === "orbit_scan"
+          ? <span>Radius: {fmtNum(missionConfig?.radius_m, 1, " m")}</span>
+          : <span>Spacing: {fmtNum(missionConfig?.spacing_m, 1, " m")}</span>}
+        {missionType === "orbit_scan"
+          ? <span>Altitude: {fmtNum(missionConfig?.altitude_m, 1, " m")}</span>
+          : <span>Expected Coverage: {fmtNum(missionPreview?.expected_coverage_pct, 1, "%")}</span>}
+        {missionType === "orbit_scan"
+          ? <span>Laps: {missionConfig?.laps ?? "--"}</span>
+          : <span>Overlap Est: {fmtNum(missionPreview?.overlap_pct_est, 1, "%")}</span>}
+        {missionType === "orbit_scan" && Array.isArray(missionConfig?.layers) && missionConfig.layers.length > 1
+          ? <span>Layers: {missionConfig.layers.map((layer) => `${layer.altitude_m}m x${layer.laps}`).join(", ")}</span>
+          : null}
+        {missionType === "orbit_scan"
+          ? <span>Pts/Lap: {missionConfig?.points_per_lap ?? "--"}</span>
+          : null}
+        {missionType === "ground_scan" ? <span>Expected Coverage: {fmtNum(missionPreview?.expected_coverage_pct, 1, "%")}</span> : null}
+        <span>Estimated Time: {fmtNum(missionPreview?.estimated_time_s, 1, " s")}</span>
+        <span>Passes: {missionPreview?.number_of_passes ?? "--"}</span>
+        <span>Path Length: {fmtNum(missionPreview?.path_length_m, 1, " m")}</span>
+        {missionType === "ground_scan" ? <span>Sweep Angle: {fmtNum(missionPreview?.sweep_angle_deg, 1, " deg")}</span> : null}
+        {missionType === "ground_scan" ? <span>Lead-In: {fmtNum(missionPreview?.lead_in_m, 1, " m")}</span> : null}
+        {missionType === "ground_scan" ? <span>Return: {fmtNum(missionPreview?.return_to_home_m, 1, " m")}</span> : null}
+      </div> : null}
+
+      {missionMsg ? <p className="hint">{missionMsg}</p> : null}
+      {missionMode === "draw" && !draftValidation.valid ? (
+        <div className="map-banner danger">
+          Invalid drawing: {draftValidation.reasons.join(" • ")}
+        </div>
+      ) : null}
+      {missionAreaIsInvalid ? <div className="map-banner danger">Mission area is invalid (self-intersection). Edit and redraw area before generating.</div> : null}
+      {!hasPath ? (
+        <div className="map-banner">
+          {missionType === "orbit_scan"
+            ? (orbitCenter
+              ? "Orbit center saved. Generate an orbit path to continue."
+              : "No orbit mission loaded yet. Set an object center, then generate an orbit.")
+            : (missionArea.length >= 3
+              ? "Scan area saved. Generate a path to continue."
+              : "No mission loaded yet. Draw a scan area, then generate a path.")}
+        </div>
+      ) : null}
+      {isSim && !mavConnected && !simState.sim_running ? <div className="map-banner subdued">No live vehicle connected. You can still prepare a mission and use local simulation.</div> : null}
+      {isSim && coverageEnabledForMission && !(Array.isArray(coverage?.covered_cells) && coverage.covered_cells.length) && !sitlState.scan_active ? <div className="map-banner subdued">Coverage overlay is idle until scan motion begins.</div> : null}
+      {isSim && sitlState.last_error ? <div className="map-banner danger">Mission executor error: {sitlState.last_error}</div> : null}
+
+      <LayerToggles items={layerItems} legend={legendItems} />
     </>
   );
 }

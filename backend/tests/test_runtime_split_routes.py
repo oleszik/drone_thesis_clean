@@ -33,3 +33,26 @@ def test_real_namespace_control_routes_exposed() -> None:
     # Endpoint should exist (200 if connected, 409 when no mavlink link)
     resp = client.post("/api/real/control/hold")
     assert resp.status_code in (200, 409)
+
+
+def test_real_namespace_mission_executor_routes_exposed() -> None:
+    state = client.get("/api/real/mission/state")
+    assert state.status_code == 200
+    payload = state.json()
+    assert "state" in payload
+    assert "scan_active" in payload
+
+    # Endpoint should exist (200 if ready, 409 while autonomy is blocked)
+    resp = client.post("/api/real/mission/start", json={"alt_m": 10.0, "accept_radius_m": 3.0})
+    assert resp.status_code in (200, 409)
+
+
+def test_real_namespace_mission_generation_routes_exposed() -> None:
+    scan = client.post("/api/real/mission/generate_scan", json={"spacing_m": 8.0, "speed_m_s": 3.0})
+    assert scan.status_code in (200, 409)
+
+    orbit = client.post(
+        "/api/real/mission/generate_orbit_scan",
+        json={"radius_m": 12.0, "altitude_m": 10.0, "laps": 1, "points_per_lap": 24},
+    )
+    assert orbit.status_code in (200, 409)

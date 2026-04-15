@@ -22,7 +22,12 @@ from .services.mavlink.transport import normalize_runtime_mode, resolve_transpor
 from .services.mission.real_mission_service import RealMissionService
 from .services.mission.simulation_mission_service import SimulationMissionService
 from .services.safety.autonomy_guard import AutonomyGuard
-from .services.safety.fence_service import check_points_inside_fence, get_operating_fence, validate_mission_payload_inside_fence
+from .services.safety.fence_service import (
+    check_points_inside_fence,
+    get_operating_fence,
+    validate_mission_area_size_within_fence,
+    validate_mission_payload_inside_fence,
+)
 from .services.safety.readiness_service import ReadinessService
 from .sse import encode_sse, encode_sse_comment, sleep_or_disconnect, stable_json
 from .sitl_executor import SitlExecutor
@@ -158,6 +163,7 @@ def create_app() -> FastAPI:
         default_serial_port=cfg.real_serial_default_port,
         default_serial_baud=cfg.real_serial_default_baud,
     )
+    real_executor = SitlExecutor(mav=real_radio, mission=mission)
     runs = RunManager()
     cov_stop_evt = threading.Event()
     cov_thread: threading.Thread | None = None
@@ -294,6 +300,61 @@ def create_app() -> FastAPI:
 
     def _map_origin() -> tuple[float, float]:
         return float(cfg.map_default_center_lng), float(cfg.map_default_center_lat)
+
+    def _resolve_live_reference_lng_lat() -> tuple[float, float] | None:
+        tele = mav.get_telemetry()
+        lon = tele.get("lon")
+        lat = tele.get("lat")
+        if lon is not None and lat is not None:
+            return float(lon), float(lat)
+        sim_vehicle = mission.get_sim_vehicle()
+        if sim_vehicle is not None:
+            return float(sim_vehicle["lng"]), float(sim_vehicle["lat"])
+        return None
+
+    def _sync_mission_reference_from_live_or_map(*, require_live: bool = False) -> tuple[float, float]:
+        ref = _resolve_live_reference_lng_lat()
+        if ref is None:
+            if require_live:
+                raise ValueError("reference position is unavailable; wait for live GPS telemetry")
+            ref = _map_origin()
+        _require_points_inside_fence([[float(ref[0]), float(ref[1])]], "reference position")
+        mission.set_reference_position(float(ref[0]), float(ref[1]))
+        return float(ref[0]), float(ref[1])
+
+    def _resolve_real_live_reference_lng_lat() -> tuple[float, float] | None:
+        tele = real_radio.telemetry()
+        lon = tele.get("lon")
+        lat = tele.get("lat")
+        if lon is not None and lat is not None:
+            return float(lon), float(lat)
+        return None
+
+    def _sync_real_mission_reference_from_live_or_map(*, require_live: bool = False) -> tuple[float, float]:
+        ref = _resolve_real_live_reference_lng_lat()
+        if ref is None:
+            if require_live:
+                raise ValueError("real GPS reference is unavailable; wait for radio telemetry")
+            ref = _map_origin()
+        _require_points_inside_fence([[float(ref[0]), float(ref[1])]], "real reference position")
+        mission.set_reference_position(float(ref[0]), float(ref[1]))
+        return float(ref[0]), float(ref[1])
+
+    def _sync_real_planning_reference() -> tuple[float, float]:
+        ref = _resolve_real_live_reference_lng_lat()
+        if ref is None:
+            payload = mission.get_path()
+            area = payload.get("scan_area_polygon_lng_lat") or []
+            orbit_center = payload.get("orbit_center_lng_lat")
+            if isinstance(area, list) and area and isinstance(area[0], list) and len(area[0]) >= 2:
+                ref = (float(area[0][0]), float(area[0][1]))
+            elif isinstance(orbit_center, list) and len(orbit_center) >= 2:
+                ref = (float(orbit_center[0]), float(orbit_center[1]))
+            else:
+                ref = _map_origin()
+        _require_points_inside_fence([[float(ref[0]), float(ref[1])]], "real planning reference position")
+        mission.set_reference_position(float(ref[0]), float(ref[1]))
+        return float(ref[0]), float(ref[1])
 
     @app.on_event("startup")
     def _on_startup() -> None:
@@ -451,6 +512,31 @@ def create_app() -> FastAPI:
 
     def _require_real_autonomy_ready(action: str) -> dict[str, object]:
         return real_autonomy_guard.require(action)
+
+    def _require_real_generation_ready(action: str) -> dict[str, object]:
+        snap = real_readiness_state()
+        checks = {str(item.get("key")): item for item in (snap.get("checks") or []) if isinstance(item, dict)}
+        required = [
+            "mavlink_connected",
+            "heartbeat_age_sec",
+            "gps_ok",
+            "ekf_ok",
+            "battery_ok",
+            "home_position_set",
+            "fence_configured",
+            "backend_config_ok",
+        ]
+        blockers = [str(checks.get(key, {}).get("message") or key) for key in required if not bool(checks.get(key, {}).get("ok"))]
+        if not blockers:
+            return snap
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": f"autonomy_blocked:{action}",
+                "blocking_reasons": blockers,
+                "readiness_snapshot": snap,
+            },
+        )
 
     @app.post("/api/connection/connect")
     def connection_connect() -> dict[str, object]:
@@ -637,16 +723,24 @@ def create_app() -> FastAPI:
             }
         if vehicle is None:
             vehicle = mission_payload.get("sim")
-        start_ll = mission_payload.get("start_position_lng_lat")
-        if isinstance(start_ll, list) and len(start_ll) >= 2:
-            origin = {"lng": float(start_ll[0]), "lat": float(start_ll[1])}
+        if vehicle is not None:
+            origin = {"lng": float(vehicle["lng"]), "lat": float(vehicle["lat"])}
         else:
-            origin = {"lng": lng, "lat": lat}
+            start_ll = mission_payload.get("start_position_lng_lat")
+            if isinstance(start_ll, list) and len(start_ll) >= 2:
+                origin = {"lng": float(start_ll[0]), "lat": float(start_ll[1])}
+            else:
+                origin = {"lng": lng, "lat": lat}
         return {
             "map_provider": cfg.map_provider,
             "tile_url_template": "/api/map/tile/{z}/{x}/{y}.png",
             "center_lng_lat": [lng, lat],
             "zoom": int(cfg.map_default_zoom),
+            "default_basemap_mode": cfg.map_default_mode,
+            "restrict_to_bounds_default": bool(cfg.map_restrict_to_bounds_default),
+            "tencent_vector_style": int(cfg.tencent_vector_style),
+            "tencent_hybrid_style": int(cfg.tencent_hybrid_style),
+            "supported_basemap_modes": ["vector", "satellite", "hybrid"],
             "operating_fence": _operating_fence(),
             "origin": origin,
             "bounds_polygon_lng_lat": bounds_polygon,
@@ -697,19 +791,13 @@ def create_app() -> FastAPI:
     @app.post("/api/mission/area")
     def mission_area(req: MissionAreaRequest) -> dict[str, object]:
         try:
+            fence = _operating_fence()
             _require_points_inside_fence(req.polygon_lng_lat, "mission area")
+            area_ok, area_msg, area_details = validate_mission_area_size_within_fence(req.polygon_lng_lat, fence)
+            if not area_ok:
+                raise ValueError(f"{area_msg}; details={area_details}")
             out = mission.set_area(req.polygon_lng_lat)
             runs.log("MISSION_AREA_SET", {"points": out.get("points")})
-            return out
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-
-    @app.post("/api/mission/start_position")
-    def mission_start_position(req: MissionStartRequest) -> dict[str, object]:
-        try:
-            _require_points_inside_fence([[req.lng, req.lat]], "start position")
-            out = mission.set_start_position(req.lng, req.lat)
-            runs.log("MISSION_START_SET", {"lng": req.lng, "lat": req.lat})
             return out
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
@@ -724,10 +812,26 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @app.post("/api/mission/landing_position")
+    def mission_landing_position(req: MissionStartRequest) -> dict[str, object]:
+        try:
+            _require_points_inside_fence([[req.lng, req.lat]], "landing position")
+            out = mission.set_landing_position(req.lng, req.lat)
+            runs.log("MISSION_LANDING_POSITION_SET", {"lng": req.lng, "lat": req.lat})
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.delete("/api/mission/landing_position")
+    def mission_landing_position_clear() -> dict[str, object]:
+        out = mission.clear_landing_position()
+        runs.log("MISSION_LANDING_POSITION_CLEARED", {})
+        return out
+
     @app.post("/api/mission/generate_scan")
     def mission_generate_scan(req: MissionGenerateRequest) -> dict[str, object]:
         try:
-            _require_autonomy_ready("mission_generate_scan")
+            _sync_mission_reference_from_live_or_map(require_live=False)
             out = real_mission.generate_scan(
                 spacing_m=req.spacing_m,
                 speed_m_s=req.speed_m_s,
@@ -751,7 +855,7 @@ def create_app() -> FastAPI:
     @app.post("/api/mission/generate_orbit_scan")
     def mission_generate_orbit_scan(req: MissionOrbitGenerateRequest) -> dict[str, object]:
         try:
-            _require_autonomy_ready("mission_generate_orbit_scan")
+            _sync_mission_reference_from_live_or_map(require_live=False)
             layer_payload = [_model_to_dict(layer) for layer in req.layers] if req.layers else None
             out = real_mission.generate_orbit_scan(
                 radius_m=req.radius_m,
@@ -830,13 +934,17 @@ def create_app() -> FastAPI:
     def sim_mission_area(req: MissionAreaRequest) -> dict[str, object]:
         return mission_area(req)
 
-    @app.post("/api/sim/mission/start_position")
-    def sim_mission_start_position(req: MissionStartRequest) -> dict[str, object]:
-        return mission_start_position(req)
-
     @app.post("/api/sim/mission/orbit_center")
     def sim_mission_orbit_center(req: MissionStartRequest) -> dict[str, object]:
         return mission_orbit_center(req)
+
+    @app.post("/api/sim/mission/landing_position")
+    def sim_mission_landing_position(req: MissionStartRequest) -> dict[str, object]:
+        return mission_landing_position(req)
+
+    @app.delete("/api/sim/mission/landing_position")
+    def sim_mission_landing_position_clear() -> dict[str, object]:
+        return mission_landing_position_clear()
 
     @app.post("/api/sim/mission/generate_scan")
     def sim_mission_generate_scan(req: MissionGenerateRequest) -> dict[str, object]:
@@ -933,6 +1041,13 @@ def create_app() -> FastAPI:
         runs.log("REAL_LAND", out)
         return out
 
+    @app.post("/api/real/control/land_here")
+    def real_control_land_here() -> dict[str, object]:
+        # LAND mode commands immediate landing at current position.
+        out = _run_real_control(real_radio.land)
+        runs.log("REAL_LAND_HERE", out)
+        return out
+
     @app.post("/api/real/control/set_mode")
     def real_control_set_mode(req: ModeRequest) -> dict[str, object]:
         out = _run_real_control(lambda: real_radio.set_mode(req.mode))
@@ -942,7 +1057,7 @@ def create_app() -> FastAPI:
     @app.post("/api/real/mission/generate_tiny")
     def real_mission_generate_tiny(req: TinyMissionRequest) -> dict[str, object]:
         try:
-            _require_real_autonomy_ready("real_mission_generate_tiny")
+            _require_real_generation_ready("real_mission_generate_tiny")
             tele = real_radio.telemetry()
             start_lng = req.start_lng if req.start_lng is not None else tele.get("lon")
             start_lat = req.start_lat if req.start_lat is not None else tele.get("lat")
@@ -978,9 +1093,90 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @app.post("/api/real/mission/generate_scan")
+    def real_mission_generate_scan(req: MissionGenerateRequest) -> dict[str, object]:
+        try:
+            _sync_real_planning_reference()
+            out = real_mission.generate_scan(
+                spacing_m=req.spacing_m,
+                speed_m_s=req.speed_m_s,
+                start_scan=req.start_scan,
+                auto_spacing=req.auto_spacing,
+            )
+            _require_mission_payload_inside_fence(out, context="generated real scan mission")
+            runs.log(
+                "REAL_MISSION_PATH_GENERATED",
+                {
+                    "requested_spacing_m": req.spacing_m,
+                    "resolved_spacing_m": (out.get("config") or {}).get("spacing_m"),
+                    "speed_m_s": req.speed_m_s,
+                    "auto_spacing": req.auto_spacing,
+                },
+            )
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/api/real/mission/generate_orbit_scan")
+    def real_mission_generate_orbit_scan(req: MissionOrbitGenerateRequest) -> dict[str, object]:
+        try:
+            _sync_real_planning_reference()
+            layer_payload = [_model_to_dict(layer) for layer in req.layers] if req.layers else None
+            out = real_mission.generate_orbit_scan(
+                radius_m=req.radius_m,
+                altitude_m=req.altitude_m,
+                laps=req.laps,
+                points_per_lap=req.points_per_lap,
+                clockwise=req.clockwise,
+                yaw_to_center=req.yaw_to_center,
+                speed_m_s=req.speed_m_s,
+                start_scan=req.start_scan,
+                layers=layer_payload,
+            )
+            _require_mission_payload_inside_fence(out, context="generated real orbit mission")
+            runs.log(
+                "REAL_MISSION_ORBIT_GENERATED",
+                {
+                    "radius_m": req.radius_m,
+                    "altitude_m": req.altitude_m,
+                    "laps": req.laps,
+                    "layers": layer_payload,
+                    "points_per_lap": req.points_per_lap,
+                    "clockwise": req.clockwise,
+                    "yaw_to_center": req.yaw_to_center,
+                    "speed_m_s": req.speed_m_s,
+                },
+            )
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @app.get("/api/real/mission/path")
     def real_mission_path() -> dict[str, object]:
         return mission_path()
+
+    @app.post("/api/real/mission/start")
+    def real_mission_start(req: SitlStartRequest) -> dict[str, object]:
+        try:
+            _require_real_autonomy_ready("real_mission_start")
+            _require_mission_payload_inside_fence(mission.get_path(), context="real mission start")
+            out = real_executor.start_scan(alt_m=req.alt_m, accept_radius_m=req.accept_radius_m)
+            runs.log("REAL_MISSION_START", {"alt_m": req.alt_m, "accept_radius_m": req.accept_radius_m})
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+
+    @app.post("/api/real/mission/stop")
+    def real_mission_stop() -> dict[str, object]:
+        out = real_executor.stop_scan()
+        runs.log("REAL_MISSION_STOP", out)
+        return out
+
+    @app.get("/api/real/mission/state")
+    def real_mission_state() -> dict[str, object]:
+        return real_executor.get_state()
 
     @app.post("/api/sim/connection/connect")
     def sim_connection_connect() -> dict[str, object]:
@@ -1250,7 +1446,7 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/map/tile/{z}/{x}/{y}.png")
-    def map_tile(z: int, x: int, y: int) -> Response:
+    def map_tile(z: int, x: int, y: int, mode: str = "vector", style: int | None = None) -> Response:
         if str(cfg.map_provider).lower() != "tencent":
             raise HTTPException(status_code=404, detail="map provider tile proxy not configured")
         if not cfg.tencent_key:
@@ -1264,35 +1460,69 @@ def create_app() -> FastAPI:
         yi = (n - 1) - int(y)
         host_idx = (int(z) + int(xw) + int(yi)) % 4
         hosts = [f"rt{host_idx}", f"rt{(host_idx + 1) % 4}", f"rt{(host_idx + 2) % 4}", f"rt{(host_idx + 3) % 4}"]
+        mode_norm = str(mode or "vector").strip().lower()
+        if mode_norm not in {"vector", "satellite", "hybrid"}:
+            mode_norm = "vector"
+        default_style = int(cfg.tencent_vector_style if mode_norm == "vector" else cfg.tencent_hybrid_style)
+        style_id = int(style) if style is not None else default_style
+
+        def build_urls(host: str) -> list[str]:
+            if mode_norm == "satellite":
+                # Tencent satellite tiles are served by p*.map.gtimg.com with a folder fanout by 16.
+                px = host.replace("rt", "p")
+                return [
+                    (
+                        f"https://{px}.map.gtimg.com/sateTiles/"
+                        f"{int(z)}/{int(xw) // 16}/{int(yi) // 16}/{int(xw)}_{int(yi)}.jpg"
+                        f"?key={cfg.tencent_key}"
+                    ),
+                    (
+                        f"https://{host}.map.gtimg.com/realtimerender"
+                        f"?z={int(z)}&x={int(xw)}&y={int(yi)}&type=sate&style=0&key={cfg.tencent_key}"
+                    ),
+                    (
+                        f"https://{host}.map.gtimg.com/realtimerender"
+                        f"?z={int(z)}&x={int(xw)}&y={int(yi)}&type=satellite&style=0&key={cfg.tencent_key}"
+                    ),
+                ]
+            render_type = "hybrid" if mode_norm == "hybrid" else "vector"
+            return [
+                (
+                    f"https://{host}.map.gtimg.com/realtimerender"
+                    f"?z={int(z)}&x={int(xw)}&y={int(yi)}&type={render_type}&style={int(style_id)}&key={cfg.tencent_key}"
+                ),
+                (
+                    f"https://{host}.map.gtimg.com/realtimerender"
+                    f"?z={int(z)}&x={int(xw)}&y={int(yi)}&type=vector&style={int(style_id)}&key={cfg.tencent_key}"
+                ),
+            ]
+
         ctx = ssl.create_default_context()
         last_err: str | None = None
         for host in hosts:
-            url = (
-                f"https://{host}.map.gtimg.com/realtimerender"
-                f"?z={int(z)}&x={int(xw)}&y={int(yi)}&type=vector&style=0&key={cfg.tencent_key}"
-            )
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            try:
-                with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
-                    body = resp.read()
-                    if not body:
-                        continue
-                    data = bytes(body)
-                    if data[:3] == b"\xff\xd8\xff":
-                        return Response(
-                            content=data,
-                            media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=3600"},
-                        )
-                    if data[:8] == b"\x89PNG\r\n\x1a\n":
-                        return Response(
-                            content=data,
-                            media_type="image/png",
-                            headers={"Cache-Control": "public, max-age=3600"},
-                        )
-            except Exception as exc:
-                last_err = str(exc)
-                continue
+            for url in build_urls(host):
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                try:
+                    with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
+                        body = resp.read()
+                        if not body:
+                            continue
+                        data = bytes(body)
+                        if data[:3] == b"\xff\xd8\xff":
+                            return Response(
+                                content=data,
+                                media_type="image/jpeg",
+                                headers={"Cache-Control": "public, max-age=3600"},
+                            )
+                        if data[:8] == b"\x89PNG\r\n\x1a\n":
+                            return Response(
+                                content=data,
+                                media_type="image/png",
+                                headers={"Cache-Control": "public, max-age=3600"},
+                            )
+                except Exception as exc:
+                    last_err = str(exc)
+                    continue
         raise HTTPException(status_code=404, detail=f"tile unavailable: {last_err or 'upstream empty'}")
 
     return app

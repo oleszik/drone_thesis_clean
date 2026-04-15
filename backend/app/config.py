@@ -26,6 +26,10 @@ class BackendConfig:
     map_default_center_lng: float
     map_default_center_lat: float
     map_default_zoom: int
+    map_default_mode: str
+    map_restrict_to_bounds_default: bool
+    tencent_vector_style: int
+    tencent_hybrid_style: int
     map_bounds_w_m: float
     map_bounds_h_m: float
     track_max_points: int
@@ -100,6 +104,19 @@ def load_config(repo_root: Path | None = None) -> BackendConfig:
     map_default_center_lng = float(os.getenv("MAP_DEFAULT_CENTER_LNG", maps.get("default_center_lng", 116.397428)))
     map_default_center_lat = float(os.getenv("MAP_DEFAULT_CENTER_LAT", maps.get("default_center_lat", 39.909230)))
     map_default_zoom = int(os.getenv("MAP_DEFAULT_ZOOM", maps.get("default_zoom", 16)))
+    map_default_mode = str(os.getenv("MAP_DEFAULT_MODE", maps.get("default_mode", "vector"))).strip().lower()
+    if map_default_mode not in {"vector", "satellite", "hybrid"}:
+        map_default_mode = "vector"
+    map_restrict_to_bounds_default = str(
+        os.getenv("MAP_RESTRICT_TO_BOUNDS_DEFAULT", maps.get("restrict_to_bounds_default", "0"))
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    tencent_cfg = maps.get("tencent", {}) if isinstance(maps.get("tencent"), dict) else {}
+    tencent_vector_style = int(
+        os.getenv("MAP_TENCENT_VECTOR_STYLE", tencent_cfg.get("vector_style", 0))
+    )
+    tencent_hybrid_style = int(
+        os.getenv("MAP_TENCENT_HYBRID_STYLE", tencent_cfg.get("hybrid_style", 0))
+    )
     map_bounds_w_m = float(os.getenv("MAP_BOUNDS_W_M", maps.get("bounds_w_m", 120.0)))
     map_bounds_h_m = float(os.getenv("MAP_BOUNDS_H_M", maps.get("bounds_h_m", 120.0)))
     track_max_points = int(os.getenv("TRACK_MAX_POINTS", maps.get("track_max_points", 2000)))
@@ -127,6 +144,10 @@ def load_config(repo_root: Path | None = None) -> BackendConfig:
         map_default_center_lng=map_default_center_lng,
         map_default_center_lat=map_default_center_lat,
         map_default_zoom=map_default_zoom,
+        map_default_mode=map_default_mode,
+        map_restrict_to_bounds_default=map_restrict_to_bounds_default,
+        tencent_vector_style=tencent_vector_style,
+        tencent_hybrid_style=tencent_hybrid_style,
         map_bounds_w_m=map_bounds_w_m,
         map_bounds_h_m=map_bounds_h_m,
         track_max_points=track_max_points,
