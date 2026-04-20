@@ -163,6 +163,7 @@ function sanitizeOrbitLayers(layers, fallbackAltitude = 10, fallbackLaps = 1) {
 }
 
 function missionTypeLabel(missionType) {
+  if (missionType === "tiny_mission") return "Tiny";
   return missionType === "orbit_scan" ? "Orbit" : "Area";
 }
 
@@ -260,10 +261,20 @@ function MissionInteractionLock({ interactionLocked }) {
   return null;
 }
 
-function MissionMapEvents({ drawModeRef, orbitModeRef, landingModeRef, onDrawPoint, onSetOrbitCenter, onSetLandingPosition, onFinishDraw }) {
+function MissionMapEvents({
+  drawModeRef,
+  orbitModeRef,
+  startModeRef,
+  landingModeRef,
+  onDrawPoint,
+  onSetOrbitCenter,
+  onSetStartPosition,
+  onSetLandingPosition,
+  onFinishDraw,
+}) {
   useMapEvents({
     mousedown(e) {
-      const active = Boolean(drawModeRef.current || orbitModeRef.current || landingModeRef.current);
+      const active = Boolean(drawModeRef.current || orbitModeRef.current || startModeRef.current || landingModeRef.current);
       if (!active) return;
       if (e.originalEvent?.preventDefault) e.originalEvent.preventDefault();
       if (e.originalEvent?.stopPropagation) e.originalEvent.stopPropagation();
@@ -273,6 +284,8 @@ function MissionMapEvents({ drawModeRef, orbitModeRef, landingModeRef, onDrawPoi
         onDrawPoint([e.latlng.lat, e.latlng.lng]);
       } else if (orbitModeRef.current) {
         onSetOrbitCenter([e.latlng.lat, e.latlng.lng]);
+      } else if (startModeRef.current) {
+        onSetStartPosition([e.latlng.lat, e.latlng.lng]);
       } else if (landingModeRef.current) {
         onSetLandingPosition([e.latlng.lat, e.latlng.lng]);
       }
@@ -303,6 +316,7 @@ export function MapPanel({
   const missionPathPath = isReal ? "/api/real/mission/path" : "/api/sim/mission/path";
   const missionAreaPath = isReal ? "/api/mission/area" : "/api/sim/mission/area";
   const missionOrbitCenterPath = isReal ? "/api/mission/orbit_center" : "/api/sim/mission/orbit_center";
+  const missionStartPath = isReal ? "/api/mission/start_position" : "/api/sim/mission/start_position";
   const missionLandingPath = isReal ? "/api/mission/landing_position" : "/api/sim/mission/landing_position";
   const missionGenerateOrbitPath = isReal ? "/api/real/mission/generate_orbit_scan" : "/api/sim/mission/generate_orbit_scan";
   const missionGenerateScanPath = isReal ? "/api/real/mission/generate_scan" : "/api/sim/mission/generate_scan";
@@ -346,9 +360,10 @@ export function MapPanel({
 
   const drawModeRef = useRef(false);
   const orbitModeRef = useRef(false);
+  const startModeRef = useRef(false);
   const landingModeRef = useRef(false);
   const simTickTimerRef = useRef(null);
-  const missionSyncGuardRef = useRef({ area: false, orbit: false, landing: false });
+  const missionSyncGuardRef = useRef({ area: false, orbit: false, start: false, landing: false });
   const missionConfigDirtyRef = useRef({
     scanSpacingM: false,
     scanSpeedMps: false,
@@ -641,6 +656,7 @@ export function MapPanel({
   useEffect(() => {
     drawModeRef.current = missionMode === "draw";
     orbitModeRef.current = missionMode === "orbit_center";
+    startModeRef.current = missionMode === "start_position";
     landingModeRef.current = missionMode === "landing_position";
   }, [missionMode]);
 
@@ -754,7 +770,7 @@ export function MapPanel({
   }, [trail]);
 
   const hasPath = missionPath.length >= 2;
-  const interactionLocked = missionMode === "draw" || missionMode === "orbit_center" || missionMode === "landing_position";
+  const interactionLocked = missionMode === "draw" || missionMode === "orbit_center" || missionMode === "start_position" || missionMode === "landing_position";
   const simStatusLabel = simState.sim_running
     ? (simState.sim_paused ? "PAUSED" : "RUNNING")
     : "STOPPED";
@@ -855,12 +871,23 @@ export function MapPanel({
       : 0;
     const fenceConfigured = Boolean(mapState?.operating_fence?.configured);
     const missionInsideFence = hasPath && Boolean(missionConfig);
-    const geometryValid = !geometryInvalid && (missionType === "orbit_scan" ? orbitReady : missionArea.length >= 3);
+    const geometryValid = !geometryInvalid && (
+      missionType === "orbit_scan"
+        ? orbitReady
+        : missionType === "ground_scan"
+          ? missionArea.length >= 3
+          : hasPath
+    );
     const validForMissionAction = Boolean(geometryValid && hasPath && readiness.can_autonomous && fenceConfigured && missionInsideFence);
+    const missionStartLngLat = missionStart ? toLngLat(missionStart, mapState?.map_provider) : null;
     onPlanningStateChange({
       geometryValid,
       hasPath,
       missionType,
+      missionStartConfigured: Boolean(missionStart),
+      missionStartLngLat: Array.isArray(missionStartLngLat) && missionStartLngLat.length >= 2
+        ? [Number(missionStartLngLat[0]), Number(missionStartLngLat[1])]
+        : null,
       startAltitudeM: Number(missionConfig?.first_altitude_m || missionConfig?.altitude_m || missionConfig?.takeoff_alt_m || 10.0),
       routeLengthM,
       areaM2,
@@ -870,7 +897,7 @@ export function MapPanel({
       readinessCanAutonomous: Boolean(readiness.can_autonomous),
       validForMissionAction,
     });
-  }, [geometryInvalid, hasPath, mapState?.operating_fence?.configured, missionArea, missionConfig, missionPath, missionType, onPlanningStateChange, orbitReady, readiness.can_autonomous]);
+  }, [geometryInvalid, hasPath, mapState?.map_provider, mapState?.operating_fence?.configured, missionArea, missionConfig, missionPath, missionStart, missionType, onPlanningStateChange, orbitReady, readiness.can_autonomous]);
 
   async function saveAreaToBackend(pointsLatLng) {
     if (!Array.isArray(pointsLatLng) || pointsLatLng.length < 3) {
@@ -903,6 +930,18 @@ export function MapPanel({
       })()),
     });
     setMissionMsg("Object center saved");
+  }
+
+  async function saveStartPositionToBackend(pointLatLng) {
+    await fetchJson(missionStartPath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify((() => {
+        const ll = toLngLat(pointLatLng, mapState?.map_provider);
+        return { lng: ll?.[0], lat: ll?.[1] };
+      })()),
+    });
+    setMissionMsg("Mission start point saved");
   }
 
   async function saveLandingPositionToBackend(pointLatLng) {
@@ -1034,6 +1073,23 @@ export function MapPanel({
       setMissionMsg("SITL scan stopped");
     } catch (err) {
       setMissionMsg(`Stop SITL failed: ${String(err)}`);
+    }
+  }
+
+  async function handleSimBatteryReset() {
+    if (!window.confirm("Reset simulated battery by rebooting SITL autopilot?")) return;
+    try {
+      await fetchJson("/api/sim/control/battery_reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setMissionMsg("Battery reset requested; waiting for reconnect...");
+      stopTickLoop();
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      await refreshMissionState();
+      setMissionMsg("Simulated battery reset complete");
+    } catch (err) {
+      setMissionMsg(`Battery reset failed: ${String(err)}`);
     }
   }
 
@@ -1226,6 +1282,19 @@ export function MapPanel({
     }
   }
 
+  async function handleSetStartPosition(p) {
+    if (missionMode !== "start_position") return;
+    setMissionStart(p);
+    setMissionMode("none");
+    try {
+      await runMissionSyncGuard("start", async () => {
+        await saveStartPositionToBackend(p);
+      });
+    } catch (err) {
+      setMissionMsg(`Save start point failed: ${String(err)}`);
+    }
+  }
+
   async function handleSetLandingPosition(p) {
     if (missionMode !== "landing_position") return;
     setMissionLandingPosition(p);
@@ -1373,6 +1442,7 @@ export function MapPanel({
   }, [draftValidation.canFinish, missionMode]);
   const autonomyBlocked = !Boolean(readiness.can_autonomous);
   const autonomyBlockReason = readiness.blocking_reasons?.[0] || "readiness not green";
+  const missionCanGenerateFromMap = missionType === "ground_scan" || missionType === "orbit_scan";
 
   const waypointDisplay = useMemo(() => {
     if (!Array.isArray(missionPath) || missionPath.length < 2) return [];
@@ -1454,6 +1524,7 @@ export function MapPanel({
               }}>
                 <option value="ground_scan">Area</option>
                 <option value="orbit_scan">Orbit</option>
+                {missionType === "tiny_mission" ? <option value="tiny_mission">Tiny (preset)</option> : null}
               </select>
             </label>
             {missionType === "ground_scan" ? (
@@ -1468,10 +1539,18 @@ export function MapPanel({
                 setMissionMsg("Orbit center mode: click map to place the object center");
               }}>Set Object Center</button>
             )}
+            <button className="small-btn" onClick={() => {
+              setMissionMode("start_position");
+              setMissionMsg(`Start point mode: click map to set ${isReal ? "real mission" : "simulation mission"} start position`);
+            }}>Set Start</button>
             <button
               className="small-btn"
-              disabled={geometryInvalid || simState.sim_running || sitlState.scan_active || (missionType === "orbit_scan" ? !orbitReady : false)}
-              title={geometryInvalid ? "Geometry invalid: fix drawing before generating" : ""}
+              disabled={!missionCanGenerateFromMap || geometryInvalid || simState.sim_running || sitlState.scan_active || (missionType === "orbit_scan" ? !orbitReady : false)}
+              title={
+                !missionCanGenerateFromMap
+                  ? "Tiny preset missions are generated from the real console button"
+                  : (geometryInvalid ? "Geometry invalid: fix drawing before generating" : "")
+              }
               onClick={handleGeneratePath}
             >
               {missionType === "orbit_scan" ? "Generate Orbit" : "Generate Path"}
@@ -1531,6 +1610,14 @@ export function MapPanel({
               <>
                 <button className="small-btn" disabled={autonomyBlocked || !hasPath || sitlState.scan_active} title={autonomyBlocked ? `Autonomy blocked: ${autonomyBlockReason}` : ""} onClick={handleSitlStart}>Start SITL</button>
                 <button className="small-btn" disabled={!sitlState.scan_active && sitlState.state !== "ARMING" && sitlState.state !== "TAKEOFF" && sitlState.state !== "RUN_PATH"} onClick={handleSitlStop}>Stop SITL</button>
+                <button
+                  className="small-btn"
+                  disabled={sitlState.scan_active}
+                  title={sitlState.scan_active ? "Stop active SITL mission before resetting battery" : "Reboot SITL autopilot and reset simulated battery"}
+                  onClick={handleSimBatteryReset}
+                >
+                  Reset Battery
+                </button>
               </>
             ) : (
               <>
@@ -1587,7 +1674,7 @@ export function MapPanel({
                   <span>Auto spacing</span>
                 </label>
               </>
-            ) : (
+            ) : missionType === "orbit_scan" ? (
               <>
                 <label className="map-input">Radius (m)
                   <input type="number" min="1" step="0.5" value={orbitRadiusM} onChange={(e) => {
@@ -1676,6 +1763,8 @@ export function MapPanel({
                   <span>Yaw center</span>
                 </label>
               </>
+            ) : (
+              <span className="hint">Tiny preset mission loaded. Use the real console actions to regenerate or start.</span>
             )}
             <label className="map-input">Speed (m/s)
               <input type="number" min="0.2" step="0.2" value={scanSpeedMps} onChange={(e) => {
@@ -1719,9 +1808,11 @@ export function MapPanel({
         <MissionMapEvents
           drawModeRef={drawModeRef}
           orbitModeRef={orbitModeRef}
+          startModeRef={startModeRef}
           landingModeRef={landingModeRef}
           onDrawPoint={handleDrawClick}
           onSetOrbitCenter={handleSetOrbitCenter}
+          onSetStartPosition={handleSetStartPosition}
           onSetLandingPosition={handleSetLandingPosition}
           onFinishDraw={handleDrawFinish}
         />

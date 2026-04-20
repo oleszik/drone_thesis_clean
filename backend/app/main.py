@@ -814,6 +814,16 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @app.post("/api/mission/start_position")
+    def mission_start_position(req: MissionStartRequest) -> dict[str, object]:
+        try:
+            _require_points_inside_fence([[req.lng, req.lat]], "reference position")
+            out = mission.set_reference_position(req.lng, req.lat)
+            runs.log("MISSION_START_POSITION_SET", {"lng": req.lng, "lat": req.lat})
+            return out
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @app.post("/api/mission/landing_position")
     def mission_landing_position(req: MissionStartRequest) -> dict[str, object]:
         try:
@@ -939,6 +949,10 @@ def create_app() -> FastAPI:
     @app.post("/api/sim/mission/orbit_center")
     def sim_mission_orbit_center(req: MissionStartRequest) -> dict[str, object]:
         return mission_orbit_center(req)
+
+    @app.post("/api/sim/mission/start_position")
+    def sim_mission_start_position(req: MissionStartRequest) -> dict[str, object]:
+        return mission_start_position(req)
 
     @app.post("/api/sim/mission/landing_position")
     def sim_mission_landing_position(req: MissionStartRequest) -> dict[str, object]:
@@ -1216,6 +1230,10 @@ def create_app() -> FastAPI:
     def sim_control_set_mode(req: ModeRequest) -> dict[str, object]:
         return control_set_mode(req)
 
+    @app.post("/api/sim/control/battery_reset")
+    def sim_control_battery_reset() -> dict[str, object]:
+        return control_battery_reset()
+
     @app.post("/api/mission/clear")
     def mission_clear() -> dict[str, object]:
         try:
@@ -1356,6 +1374,12 @@ def create_app() -> FastAPI:
     def control_set_mode(req: ModeRequest) -> dict[str, object]:
         out = _run_control(lambda: mav.set_mode(req.mode))
         runs.log("SET_MODE", {"mode": req.mode})
+        return out
+
+    @app.post("/api/control/battery_reset")
+    def control_battery_reset() -> dict[str, object]:
+        out = _run_control(mav.battery_reset)
+        runs.log("BATTERY_RESET", out)
         return out
 
     @app.post("/api/runs/start")

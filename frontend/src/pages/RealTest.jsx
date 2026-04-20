@@ -8,7 +8,13 @@ async function fetchJson(path, init) {
   const resp = await fetch(`${BACKEND_BASE}${path}`, init);
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    const detail = payload?.detail ? String(payload.detail) : `HTTP ${resp.status}`;
+    const rawDetail = payload?.detail;
+    let detail = rawDetail ? String(rawDetail) : `HTTP ${resp.status}`;
+    if (rawDetail && typeof rawDetail === "object") {
+      const reasons = Array.isArray(rawDetail.blocking_reasons) ? rawDetail.blocking_reasons : [];
+      const msg = rawDetail.error ? String(rawDetail.error) : `HTTP ${resp.status}`;
+      detail = reasons.length ? `${msg} (${reasons.join("; ")})` : msg;
+    }
     throw new Error(detail);
   }
   return payload;
@@ -64,6 +70,8 @@ export function RealTest() {
   const [planningState, setPlanningState] = useState({
     geometryValid: false,
     hasPath: false,
+    missionStartConfigured: false,
+    missionStartLngLat: null,
     startAltitudeM: 10,
     areaM2: 0,
     perimeterM: 0,
@@ -232,19 +240,65 @@ export function RealTest() {
     setActionBusy(true);
     setActionMsg("Generating Tiny Mission...");
     try {
-  const payload = await fetchJson("/api/real/mission/generate_tiny", {
+      const missionStart = Array.isArray(planningState.missionStartLngLat) && planningState.missionStartLngLat.length >= 2
+        ? [Number(planningState.missionStartLngLat[0]), Number(planningState.missionStartLngLat[1])]
+        : null;
+      const telemetryStart = Number.isFinite(Number(telemetry.lon)) && Number.isFinite(Number(telemetry.lat))
+        ? [Number(telemetry.lon), Number(telemetry.lat)]
+        : null;
+      const request = {};
+      const selectedStart = missionStart || telemetryStart;
+      const startSource = missionStart ? "map start point" : (telemetryStart ? "live GPS" : "autopilot reference");
+      if (selectedStart) {
+        request.start_lng = selectedStart[0];
+        request.start_lat = selectedStart[1];
+      }
+      const headingDeg = Number(telemetry.yaw_deg);
+      if (Number.isFinite(headingDeg)) {
+        request.heading_deg = headingDeg;
+      }
+
+      const payload = await fetchJson("/api/real/mission/generate_tiny", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(request),
       });
       const waypointCount = (payload?.waypoints_lng_lat || []).length;
-      setActionMsg(`OK: Tiny Mission ready (${waypointCount} waypoints)`);
+      setActionMsg(`OK: Tiny Mission ready (${waypointCount} waypoints, start: ${startSource})`);
     } catch (err) {
       setActionMsg(`Error: ${String(err)}`);
     } finally {
       setActionBusy(false);
     }
-  }, []);
+  }, [planningState.missionStartLngLat, telemetry.lat, telemetry.lon, telemetry.yaw_deg]);
+
+  const runSetStartFromLive = useCallback(async () => {
+    const lng = Number(telemetry.lon);
+    const lat = Number(telemetry.lat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      setActionMsg("Error: live GPS position unavailable, wait for telemetry");
+      return;
+    }
+    setActionBusy(true);
+    setActionMsg("Saving mission start point from live GPS...");
+    try {
+      await fetchJson("/api/mission/start_position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lng, lat }),
+      });
+      setPlanningState((prev) => ({
+        ...prev,
+        missionStartConfigured: true,
+        missionStartLngLat: [lng, lat],
+      }));
+      setActionMsg(`OK: mission start point saved (${lng.toFixed(6)}, ${lat.toFixed(6)})`);
+    } catch (err) {
+      setActionMsg(`Error: ${String(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, [telemetry.lat, telemetry.lon]);
 
   const runStartMission = useCallback(async () => {
     if (!window.confirm("Start the generated mission on the real drone now?")) return;
@@ -416,6 +470,20 @@ export function RealTest() {
         </div>
         <div className="real-control-row real-action-row cols-4">
           <button
+            className="real-arm-btn"
+            disabled={!status.connected || actionBusy || status.armed}
+            onClick={() => runControlAction("/api/real/control/arm", "ARM", "Arm the vehicle now?")}
+          >
+            Arm
+          </button>
+          <button
+            className="real-disconnect-btn"
+            disabled={!status.connected || actionBusy || !status.armed}
+            onClick={() => runControlAction("/api/real/control/disarm", "DISARM", "Disarm the vehicle now?")}
+          >
+            Disarm
+          </button>
+          <button
             className="real-hold-btn"
             disabled={!status.connected || actionBusy}
             onClick={() => runControlAction("/api/real/control/hold", "HOLD", "Set vehicle to HOLD (LOITER) now?")}
@@ -456,6 +524,7 @@ export function RealTest() {
         <div className="chips compact-strip">
           <span className="chip"><strong>Path:</strong> {planningState.hasPath ? "ready" : "not generated"}</span>
           {!planningState.geometryValid ? <span className="chip"><strong>Geometry:</strong> invalid</span> : null}
+          <span className="chip"><strong>Start:</strong> {planningState.missionStartConfigured ? "set" : "not set"}</span>
           <span className="chip">
             <strong>Fence:</strong> {planningState.fenceConfigured ? (planningState.hasPath ? (planningState.missionInsideFence ? "mission inside" : "check pending") : "configured") : "missing"}
           </span>
@@ -491,6 +560,13 @@ export function RealTest() {
             onClick={runStopMission}
           >
             Stop Mission / RTL
+          </button>
+          <button
+            className="real-test-btn"
+            disabled={actionBusy || !status.connected}
+            onClick={runSetStartFromLive}
+          >
+            Set Start = Live GPS
           </button>
           <button
             className="real-tiny-btn"

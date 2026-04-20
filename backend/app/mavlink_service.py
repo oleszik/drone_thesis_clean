@@ -175,6 +175,28 @@ class MavlinkService:
         self.set_mode("RTL")
         return {"ok": True, "action": "rtl"}
 
+    def battery_reset(self) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        master = self._require_master()
+        # In SITL this reboots the autopilot process state, which resets simulated battery.
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            0,
+            1,  # reboot autopilot
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        # Force a reconnect cycle so status/UI updates promptly after reboot.
+        self._close_master()
+        return {"ok": True, "action": "battery_reset", "method": "autopilot_reboot"}
+
     def set_speed(self, speed_m_s: float) -> dict[str, Any]:
         if mavutil is None:
             raise RuntimeError("pymavlink is not installed")

@@ -818,6 +818,12 @@ button.danger {
   min-height: 32px;
 }
 
+.real-arm-btn {
+  border-color: #86efac;
+  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+  color: #166534;
+}
+
 .real-hold-btn {
   border-color: #7dd3fc;
   background: linear-gradient(180deg, #f0f9ff 0%, #dbeafe 100%);
@@ -844,7 +850,7 @@ button.danger {
 
 .real-preset-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 
@@ -1561,6 +1567,7 @@ button.danger {
 .app-shell .real-hold-btn,
 .app-shell .real-test-btn,
 .app-shell .real-connect-btn,
+.app-shell .real-arm-btn,
 .app-shell .real-rtl-btn,
 .app-shell .real-disconnect-btn,
 .app-shell .real-land-btn,
@@ -1575,6 +1582,7 @@ button.danger {
 }
 
 .app-shell .real-connect-btn,
+.app-shell .real-arm-btn,
 .app-shell .real-tiny-btn {
   border-color: rgba(74, 222, 128, 0.52);
   background: linear-gradient(180deg, rgba(20, 83, 45, 0.72), rgba(15, 23, 42, 0.9));

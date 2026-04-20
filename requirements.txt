@@ -7,3 +7,4 @@ rich
 tensorboard
 pyyaml
 pymavlink>=2.4.41
+matplotlib>=3.8

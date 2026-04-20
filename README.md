@@ -90,6 +90,15 @@ flowchart TD
     D -->|REST API| E[Frontend Dashboard<br/>React + Vite]
 ```
 
+Detailed closed-loop runtime diagrams: `docs/system_data_flow_loop.md`.
+
+## Thesis Visuals
+
+Trajectory figure workflow for publication-quality:
+
+- `docs/thesis_path_plots.md`
+- script: `python -m scripts.plot_drone_paths ...` (including `website-report` from `/api/runs/current/export/json`)
+
 ## Reproducing Thesis Experiments
 
 Baseline coverage evaluation (scan gate style in simulation):
