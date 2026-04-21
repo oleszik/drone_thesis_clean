@@ -146,20 +146,25 @@ class SitlExecutor:
                 # SITL start still works without a home update; this is best-effort.
                 pass
 
-            self._mav.set_mode("GUIDED")
-            self._mav.arm()
-            if not self._wait_until(lambda: bool(self._mav.get_status().get("armed")), timeout_s=20.0):
-                raise RuntimeError("arming timeout")
+            with self._lock:
+                self._set_state("ARMING")
+            try:
+                self._mav.set_mode("GUIDED")
+            except Exception as exc:
+                raise RuntimeError(f"guided mode switch failed: {exc}") from exc
+
+            try:
+                self._mav.arm()
+            except Exception as exc:
+                raise RuntimeError(f"arming failed: {exc}") from exc
 
             with self._lock:
                 self._set_state("TAKEOFF")
 
-            self._mav.takeoff(self._alt_m)
-            if not self._wait_until(
-                lambda: (self._mav.get_telemetry().get("rel_alt_m") or 0.0) >= (self._alt_m - 0.7),
-                timeout_s=60.0,
-            ):
-                raise RuntimeError("takeoff timeout")
+            try:
+                self._mav.takeoff(self._alt_m)
+            except Exception as exc:
+                raise RuntimeError(f"takeoff failed: {exc}") from exc
 
             try:
                 self._mav.set_speed(self._speed_m_s)
@@ -182,12 +187,17 @@ class SitlExecutor:
 
                 lng_t, lat_t = float(tgt[0]), float(tgt[1])
                 yaw_deg = meta.get("yaw_deg")
-                self._mav.goto_location(
-                    lng=lng_t,
-                    lat=lat_t,
-                    alt_rel_m=alt,
-                    yaw_deg=(float(yaw_deg) if yaw_deg is not None else None),
-                )
+                try:
+                    self._mav.goto_location(
+                        lng=lng_t,
+                        lat=lat_t,
+                        alt_rel_m=alt,
+                        yaw_deg=(float(yaw_deg) if yaw_deg is not None else None),
+                    )
+                except Exception as exc:
+                    if self._wp_idx == 0:
+                        raise RuntimeError(f"first waypoint execution failed: {exc}") from exc
+                    raise RuntimeError(f"waypoint execution failed (index={self._wp_idx}): {exc}") from exc
 
                 tele = self._mav.get_telemetry()
                 lng = tele.get("lon")

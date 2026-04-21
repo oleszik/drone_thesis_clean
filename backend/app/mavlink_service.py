@@ -5,7 +5,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 try:
     from pymavlink import mavutil
@@ -24,6 +24,13 @@ class MavlinkSettings:
 
 
 class MavlinkService:
+    ARM_TIMEOUT_S = 15.0
+    DISARM_TIMEOUT_S = 12.0
+    MODE_TIMEOUT_S = 10.0
+    TAKEOFF_RISE_TIMEOUT_S = 20.0
+    TAKEOFF_MIN_RISE_M = 0.8
+    LEVEL_CAL_ACK_TIMEOUT_S = 6.0
+
     def __init__(self, settings: MavlinkSettings) -> None:
         self._settings = settings
         self._lock = threading.Lock()
@@ -36,11 +43,13 @@ class MavlinkService:
             "connected": False,
             "armed": False,
             "mode": "UNKNOWN",
-            "failsafes": {"gps_ok": False, "ekf_ok": False, "battery_low": False},
+            "failsafes": {"gps_ok": False, "ekf_ok": False, "battery_low": None},
             "compass_calibration": self._new_compass_calibration_status(),
             "connection_url": settings.connection_url,
             "last_error": "",
             "last_heartbeat_age_s": None,
+            "last_status_text": "",
+            "recent_status_text": [],
         }
         self._telemetry: dict[str, Any] = {
             "lat": None,
@@ -61,6 +70,8 @@ class MavlinkService:
             "updated_at_unix": None,
         }
         self._track: deque[dict[str, Any]] = deque(maxlen=max(100, int(settings.track_max_points)))
+        self._status_text_log: deque[dict[str, Any]] = deque(maxlen=12)
+        self._command_ack_log: deque[dict[str, Any]] = deque(maxlen=40)
 
     @staticmethod
     def _new_compass_calibration_status() -> dict[str, Any]:
@@ -109,6 +120,34 @@ class MavlinkService:
             except Exception:
                 pass
         return f"result_{int(result_code)}"
+
+    @staticmethod
+    def _severity_label(severity_code: int | None) -> str:
+        if severity_code is None:
+            return "unknown"
+        if mavutil is not None:
+            try:
+                enum_tbl = mavutil.mavlink.enums.get("MAV_SEVERITY")
+                if isinstance(enum_tbl, dict):
+                    enum_value = enum_tbl.get(int(severity_code))
+                    name = str(getattr(enum_value, "name", "") or "").strip()
+                    if name.startswith("MAV_SEVERITY_"):
+                        name = name[len("MAV_SEVERITY_") :]
+                    if name:
+                        return name.lower()
+            except Exception:
+                pass
+        fallback = {
+            0: "emergency",
+            1: "alert",
+            2: "critical",
+            3: "error",
+            4: "warning",
+            5: "notice",
+            6: "info",
+            7: "debug",
+        }
+        return fallback.get(int(severity_code), f"severity_{int(severity_code)}")
 
     @staticmethod
     def _mag_cal_status_label(status_code: int | None) -> str:
@@ -167,6 +206,34 @@ class MavlinkService:
         if mavutil is None:
             return 42425
         return int(getattr(mavutil.mavlink, "MAV_CMD_DO_CANCEL_MAG_CAL", 42425))
+
+    @staticmethod
+    def _preflight_calibration_cmd() -> int:
+        if mavutil is None:
+            return 241
+        return int(getattr(mavutil.mavlink, "MAV_CMD_PREFLIGHT_CALIBRATION", 241))
+
+    @staticmethod
+    def _level_calibration_param5() -> int:
+        # MAV_CMD_PREFLIGHT_CALIBRATION param5=2 requests board level trim.
+        if mavutil is None:
+            return 2
+        for name in (
+            "PREFLIGHT_CALIBRATION_ACCELEROMETER_BOARD_LEVEL",
+            "PREFLIGHT_CALIBRATION_ACCELEROMETER_LEVEL",
+        ):
+            val = getattr(mavutil.mavlink, name, None)
+            if isinstance(val, int):
+                return int(val)
+        return 2
+
+    @staticmethod
+    def _command_ack_accept_codes() -> set[int]:
+        if mavutil is None:
+            return {0, 5}
+        accepted = int(getattr(mavutil.mavlink, "MAV_RESULT_ACCEPTED", 0))
+        in_progress = int(getattr(mavutil.mavlink, "MAV_RESULT_IN_PROGRESS", 5))
+        return {accepted, in_progress}
 
     def _set_compass_calibration(self, **updates: Any) -> dict[str, Any]:
         now = time.time()
@@ -227,6 +294,7 @@ class MavlinkService:
     def get_status(self) -> dict[str, Any]:
         with self._lock:
             out = dict(self._status)
+            out["recent_status_text"] = [str(item.get("line") or "") for item in self._status_text_log]
             if self._last_heartbeat_ts is not None and out.get("connected"):
                 out["last_heartbeat_age_s"] = max(0.0, time.monotonic() - self._last_heartbeat_ts)
             return out
@@ -242,17 +310,95 @@ class MavlinkService:
                 return list(self._track)
             return list(self._track)[-n:]
 
-    def arm(self) -> dict[str, Any]:
+    def _wait_for_condition(
+        self,
+        predicate: Callable[[dict[str, Any], dict[str, Any]], bool],
+        timeout_s: float,
+        poll_s: float = 0.2,
+    ) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+        deadline = time.monotonic() + max(0.1, float(timeout_s))
+        last_status = self.get_status()
+        last_telem = self.get_telemetry()
+        while time.monotonic() < deadline:
+            last_status = self.get_status()
+            last_telem = self.get_telemetry()
+            try:
+                if bool(predicate(last_status, last_telem)):
+                    return True, last_status, last_telem
+            except Exception:
+                pass
+            remain = max(0.02, deadline - time.monotonic())
+            time.sleep(min(max(0.02, float(poll_s)), remain))
+        return False, last_status, last_telem
+
+    def _latest_status_text(self) -> str:
+        with self._lock:
+            return str(self._status.get("last_status_text") or "")
+
+    def _runtime_error_with_status_text(self, message: str) -> RuntimeError:
+        status_text = self._latest_status_text()
+        if status_text:
+            return RuntimeError(f"{message}; autopilot status: {status_text}")
+        return RuntimeError(message)
+
+    def _wait_for_command_ack(
+        self,
+        *,
+        command_id: int,
+        after_unix: float,
+        timeout_s: float,
+        poll_s: float = 0.1,
+    ) -> dict[str, Any] | None:
+        deadline = time.monotonic() + max(0.1, float(timeout_s))
+        while time.monotonic() < deadline:
+            with self._lock:
+                for item in reversed(self._command_ack_log):
+                    try:
+                        item_cmd = int(item.get("command"))
+                        item_t = float(item.get("t_unix"))
+                    except Exception:
+                        continue
+                    if item_cmd == int(command_id) and item_t >= float(after_unix):
+                        return dict(item)
+            remain = max(0.02, deadline - time.monotonic())
+            time.sleep(min(max(0.02, float(poll_s)), remain))
+        return None
+
+    def arm(self, timeout_s: float = ARM_TIMEOUT_S) -> dict[str, Any]:
         master = self._require_master()
         master.arducopter_arm()
-        return {"ok": True, "action": "arm"}
+        ok, status, _ = self._wait_for_condition(
+            lambda st, _telem: bool(st.get("armed")),
+            timeout_s=float(timeout_s),
+        )
+        if not ok:
+            raise self._runtime_error_with_status_text("arm failed or was rejected by autopilot")
+        return {
+            "ok": True,
+            "action": "arm",
+            "armed": bool(status.get("armed")),
+            "resulting_mode": str(status.get("mode") or "UNKNOWN"),
+            "last_status_text": str(status.get("last_status_text") or ""),
+        }
 
-    def disarm(self) -> dict[str, Any]:
+    def disarm(self, timeout_s: float = DISARM_TIMEOUT_S) -> dict[str, Any]:
         master = self._require_master()
         master.arducopter_disarm()
-        return {"ok": True, "action": "disarm"}
+        ok, status, _ = self._wait_for_condition(
+            lambda st, _telem: not bool(st.get("armed")),
+            timeout_s=float(timeout_s),
+        )
+        if not ok:
+            raise self._runtime_error_with_status_text("disarm failed or was rejected by autopilot")
+        return {
+            "ok": True,
+            "action": "disarm",
+            "armed": bool(status.get("armed")),
+            "resulting_mode": str(status.get("mode") or "UNKNOWN"),
+            "last_status_text": str(status.get("last_status_text") or ""),
+        }
 
-    def set_mode(self, mode: str) -> dict[str, Any]:
+    def set_mode(self, mode: str, timeout_s: float = MODE_TIMEOUT_S) -> dict[str, Any]:
         mode_name = str(mode or "").upper().strip()
         if not mode_name:
             raise RuntimeError("mode is required")
@@ -261,14 +407,32 @@ class MavlinkService:
         if mode_name not in mapping:
             raise RuntimeError(f"unsupported mode: {mode_name}")
         master.set_mode(mode_name)
-        return {"ok": True, "action": "set_mode", "mode": mode_name}
+        ok, status, _ = self._wait_for_condition(
+            lambda st, _telem: str(st.get("mode") or "").upper().strip() == mode_name,
+            timeout_s=float(timeout_s),
+        )
+        if not ok:
+            current_mode = str(status.get("mode") or "UNKNOWN")
+            raise self._runtime_error_with_status_text(
+                f"set_mode failed or was rejected by autopilot: requested={mode_name}, current={current_mode}"
+            )
+        return {
+            "ok": True,
+            "action": "set_mode",
+            "mode": mode_name,
+            "resulting_mode": str(status.get("mode") or mode_name),
+            "armed": bool(status.get("armed")),
+            "last_status_text": str(status.get("last_status_text") or ""),
+        }
 
-    def takeoff(self, alt_m: float | None = None) -> dict[str, Any]:
+    def takeoff(self, alt_m: float | None = None, rise_timeout_s: float = TAKEOFF_RISE_TIMEOUT_S) -> dict[str, Any]:
         master = self._require_master()
         alt = float(alt_m if alt_m is not None else self._settings.default_takeoff_alt_m)
         alt = max(1.0, alt)
         # Use GUIDED for copter takeoff command.
         self.set_mode("GUIDED")
+        baseline_rel_alt = self._safe_float(self.get_telemetry().get("rel_alt_m"))
+        rise_target = self.TAKEOFF_MIN_RISE_M if baseline_rel_alt is None else (baseline_rel_alt + self.TAKEOFF_MIN_RISE_M)
         master.mav.command_long_send(
             master.target_system,
             master.target_component,
@@ -282,7 +446,27 @@ class MavlinkService:
             0,
             alt,
         )
-        return {"ok": True, "action": "takeoff", "alt_m": alt}
+        ok, status, telem = self._wait_for_condition(
+            lambda _st, t: (
+                self._safe_float(t.get("rel_alt_m")) is not None
+                and float(self._safe_float(t.get("rel_alt_m")) or 0.0) >= float(rise_target)
+            ),
+            timeout_s=float(rise_timeout_s),
+        )
+        if not ok:
+            rel_alt_now = self._safe_float(telem.get("rel_alt_m"))
+            raise self._runtime_error_with_status_text(
+                f"takeoff failed or was rejected by autopilot (no altitude rise observed; rel_alt_m={rel_alt_now})"
+            )
+        return {
+            "ok": True,
+            "action": "takeoff",
+            "alt_m": alt,
+            "armed": bool(status.get("armed")),
+            "resulting_mode": str(status.get("mode") or "UNKNOWN"),
+            "rel_alt_m": self._safe_float(telem.get("rel_alt_m")),
+            "last_status_text": str(status.get("last_status_text") or ""),
+        }
 
     def land(self) -> dict[str, Any]:
         self.set_mode("LAND")
@@ -291,6 +475,51 @@ class MavlinkService:
     def rtl(self) -> dict[str, Any]:
         self.set_mode("RTL")
         return {"ok": True, "action": "rtl"}
+
+    def level_calibration(self, timeout_s: float = LEVEL_CAL_ACK_TIMEOUT_S) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        st = self.get_status()
+        if bool(st.get("armed")):
+            raise RuntimeError("vehicle must be disarmed before level calibration")
+        master = self._require_master()
+        cmd_id = self._preflight_calibration_cmd()
+        sent_at_unix = time.time()
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            cmd_id,
+            0,
+            0,
+            0,
+            0,
+            0,
+            float(self._level_calibration_param5()),
+            0,
+            0,
+        )
+        ack = self._wait_for_command_ack(
+            command_id=cmd_id,
+            after_unix=sent_at_unix,
+            timeout_s=float(timeout_s),
+        )
+        if ack is None:
+            raise self._runtime_error_with_status_text("level calibration command timed out waiting for COMMAND_ACK")
+        ack_result = self._safe_int(ack.get("result"))
+        ack_result_label = str(ack.get("result_label") or self._command_result_label(ack_result))
+        if ack_result not in self._command_ack_accept_codes():
+            raise self._runtime_error_with_status_text(
+                f"level calibration command failed or was rejected by autopilot: {ack_result_label}"
+            )
+        status = self.get_status()
+        return {
+            "ok": True,
+            "action": "level_calibration",
+            "armed": bool(status.get("armed")),
+            "resulting_mode": str(status.get("mode") or "UNKNOWN"),
+            "ack_result": ack_result_label,
+            "last_status_text": str(status.get("last_status_text") or ""),
+        }
 
     def start_compass_calibration(self, *, retry_on_failure: bool = True, autosave: bool = True) -> dict[str, Any]:
         if mavutil is None:
@@ -507,6 +736,7 @@ class MavlinkService:
             master = self._master
             self._master = None
             self._status["connected"] = False
+            self._command_ack_log.clear()
             cur = self._status.get("compass_calibration")
             if isinstance(cur, dict):
                 state = str(cur.get("state") or "").strip().lower()
@@ -596,6 +826,7 @@ class MavlinkService:
             self._status["connection_url"] = str(conn_url)
             self._status["last_error"] = ""
             self._status["compass_calibration"] = self._new_compass_calibration_status()
+            self._command_ack_log.clear()
         return True
 
     def _request_data_streams(self, master: Any) -> None:
@@ -660,19 +891,47 @@ class MavlinkService:
                 self._status["connected"] = True
             return
 
+        if msg_type == "STATUSTEXT":
+            raw_text = getattr(msg, "text", "")
+            if isinstance(raw_text, bytes):
+                try:
+                    raw_text = raw_text.decode("utf-8", errors="ignore")
+                except Exception:
+                    raw_text = ""
+            text = str(raw_text or "").replace("\x00", "").strip()
+            if not text:
+                return
+            severity = self._safe_int(getattr(msg, "severity", None))
+            sev_label = self._severity_label(severity)
+            line = f"[{sev_label}] {text}" if sev_label else text
+            with self._lock:
+                self._status_text_log.append(
+                    {
+                        "t_unix": now,
+                        "severity": severity,
+                        "severity_label": sev_label,
+                        "text": text,
+                        "line": line,
+                    }
+                )
+                self._status["last_status_text"] = line
+                self._status["recent_status_text"] = [str(item.get("line") or "") for item in self._status_text_log]
+            return
+
         if msg_type == "COMMAND_ACK":
             command = self._safe_int(getattr(msg, "command", None))
             result = self._safe_int(getattr(msg, "result", None))
+            result_label = self._command_result_label(result)
+            ack_item = {
+                "t_unix": now,
+                "command": command,
+                "result": result,
+                "result_label": result_label,
+            }
+            with self._lock:
+                self._command_ack_log.append(ack_item)
             if command in {self._mag_cal_start_cmd(), self._mag_cal_cancel_cmd()}:
-                result_label = self._command_result_label(result)
-                accepted = False
-                if mavutil is not None:
-                    accepted = result in {
-                        int(getattr(mavutil.mavlink, "MAV_RESULT_ACCEPTED", 0)),
-                        int(getattr(mavutil.mavlink, "MAV_RESULT_IN_PROGRESS", 5)),
-                    }
-                else:
-                    accepted = result in {0, 5}
+                accepted = result in self._command_ack_accept_codes()
                 if command == self._mag_cal_start_cmd() and not accepted:
                     self._set_compass_calibration(
                         state="failed",
@@ -794,10 +1053,13 @@ class MavlinkService:
 
         if msg_type == "SYS_STATUS":
             battery = float(msg.battery_remaining)
+            battery_low: bool | None = None
+            if battery >= 0:
+                battery_low = bool(battery < 20.0)
             with self._lock:
                 self._telemetry["battery_percent"] = battery if battery >= 0 else None
                 self._telemetry["updated_at_unix"] = now
-                self._status["failsafes"]["battery_low"] = bool(battery >= 0 and battery < 20.0)
+                self._status["failsafes"]["battery_low"] = battery_low
             return
 
         if msg_type == "GPS_RAW_INT":

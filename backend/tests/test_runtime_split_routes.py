@@ -33,6 +33,8 @@ def test_real_namespace_control_routes_exposed() -> None:
     # Endpoint should exist (200 if connected, 409 when no mavlink link)
     resp = client.post("/api/real/control/hold")
     assert resp.status_code in (200, 409)
+    level = client.post("/api/real/control/level_calibrate")
+    assert level.status_code in (200, 409)
 
 
 def test_real_namespace_mission_executor_routes_exposed() -> None:

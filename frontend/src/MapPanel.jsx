@@ -390,6 +390,8 @@ export function MapPanel({
   const [basemapMode, setBasemapMode] = useState("vector");
   const [tencentVectorStyle, setTencentVectorStyle] = useState(0);
   const [tencentHybridStyle, setTencentHybridStyle] = useState(0);
+  const [basemapTileErrors, setBasemapTileErrors] = useState(0);
+  const [basemapProxyFailed, setBasemapProxyFailed] = useState(false);
   const [restrictToBounds, setRestrictToBounds] = useState(false);
   const [recenterSeq, setRecenterSeq] = useState(0);
   const basemapInitRef = useRef(false);
@@ -1362,13 +1364,31 @@ export function MapPanel({
 
   const restrictionBounds = useMemo(() => polygonToBounds(restrictionPolygon), [restrictionPolygon]);
 
+  useEffect(() => {
+    setBasemapTileErrors(0);
+    setBasemapProxyFailed(false);
+  }, [mapState?.map_provider]);
+
+  const onBasemapTileError = useCallback(() => {
+    if (!isTencentProvider(mapState?.map_provider)) return;
+    setBasemapTileErrors((prev) => {
+      const next = prev + 1;
+      if (next >= 3) setBasemapProxyFailed(true);
+      return next;
+    });
+  }, [mapState?.map_provider]);
+
   const basemapUrls = useMemo(() => {
+    const osm = {
+      vector: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      satellite: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      hybridVector: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    };
+    if (basemapProxyFailed) {
+      return osm;
+    }
     if (!mapState?.tile_url_template) {
-      return {
-        vector: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        satellite: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        hybridVector: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      };
+      return osm;
     }
     const base = `${BACKEND_BASE}${mapState.tile_url_template}`;
     if (!isTencentProvider(mapState?.map_provider)) {
@@ -1385,7 +1405,7 @@ export function MapPanel({
       satellite: `${base}?${new URLSearchParams({ mode: "satellite" }).toString()}`,
       hybridVector: `${base}?${new URLSearchParams({ mode: "vector", style: hybridStyle }).toString()}`,
     };
-  }, [mapState?.map_provider, mapState?.tile_url_template, tencentHybridStyle, tencentVectorStyle]);
+  }, [basemapProxyFailed, mapState?.map_provider, mapState?.tile_url_template, tencentHybridStyle, tencentVectorStyle]);
 
   const activeBasemapMode = supportedBasemapModes.includes(basemapMode) ? basemapMode : "vector";
   const coverageEnabledForMission = missionType !== "orbit_scan";
@@ -1830,6 +1850,7 @@ export function MapPanel({
             maxZoom={20}
             tileSize={256}
             detectRetina={false}
+            eventHandlers={{ tileerror: onBasemapTileError }}
           />
         ) : null}
 
@@ -1840,6 +1861,7 @@ export function MapPanel({
             maxZoom={20}
             tileSize={256}
             detectRetina={false}
+            eventHandlers={{ tileerror: onBasemapTileError }}
           />
         ) : null}
 
@@ -1851,6 +1873,7 @@ export function MapPanel({
               maxZoom={20}
               tileSize={256}
               detectRetina={false}
+              eventHandlers={{ tileerror: onBasemapTileError }}
             />
             <TileLayer
               key={`basemap-hybrid-vec-${basemapUrls.hybridVector}`}
@@ -1859,6 +1882,7 @@ export function MapPanel({
               tileSize={256}
               detectRetina={false}
               opacity={0.6}
+              eventHandlers={{ tileerror: onBasemapTileError }}
             />
           </>
         ) : null}

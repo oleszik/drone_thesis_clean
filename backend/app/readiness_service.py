@@ -101,24 +101,43 @@ class ReadinessService:
         battery_pct = _safe_float(telemetry.get("battery_percent"))
         battery_low_flag = failsafes.get("battery_low") if "battery_low" in failsafes else None
         battery_low = bool(battery_low_flag) if battery_low_flag is not None else None
-        # Prefer FC failsafe battery state when available; percent threshold is a secondary guard.
-        if battery_low is not None:
-            battery_ok = (not battery_low) and (battery_pct is None or battery_pct >= 25.0)
+        battery_msg = ""
+        battery_reason = ""
+        # Prefer FC failsafe battery state when available but never mark healthy on missing battery telemetry.
+        if battery_pct is None and battery_low is None:
+            battery_ok = False
+            battery_reason = "battery monitor not configured or telemetry missing"
+            battery_msg = "battery status unavailable"
+        elif battery_pct is None and battery_low is False:
+            battery_ok = False
+            battery_reason = "battery percent unavailable"
+            battery_msg = "battery status unavailable (battery_percent missing)"
+        elif battery_low is True:
+            battery_ok = False
+            battery_reason = "battery failsafe low"
+            battery_msg = f"battery low (pct={battery_pct})"
+        elif battery_pct is None:
+            battery_ok = False
+            battery_reason = "battery status unavailable"
+            battery_msg = "battery status unavailable"
         else:
-            battery_ok = battery_pct is not None and battery_pct >= 25.0
+            battery_ok = battery_pct >= 25.0
+            battery_reason = "ok" if battery_ok else "battery percent below threshold"
+            battery_msg = (
+                f"battery healthy (pct={battery_pct}, fc_low={battery_low})"
+                if battery_ok
+                else f"battery not ready (pct={battery_pct}, fc_low={battery_low})"
+            )
         checks.append(
             {
                 "key": "battery_ok",
                 "ok": battery_ok,
                 "severity": "critical",
-                "message": (
-                    f"battery healthy (pct={battery_pct}, fc_low={battery_low})"
-                    if battery_ok
-                    else f"battery not ready (pct={battery_pct}, fc_low={battery_low})"
-                ),
+                "message": battery_msg,
                 "value": {
                     "battery_percent": battery_pct,
                     "battery_low": battery_low,
+                    "reason": battery_reason,
                 },
             }
         )

@@ -486,6 +486,7 @@ def create_app() -> FastAPI:
         ]
         can_manual = bool(radio_connected)
         can_autonomous = bool(snap.get("can_autonomous")) and heartbeat_fresh and telemetry_fresh and radio_connected
+        mav_status = radio_state.get("mav_status") if isinstance(radio_state.get("mav_status"), dict) else {}
         return {
             **snap,
             "overall_ready": bool(can_autonomous),
@@ -494,6 +495,7 @@ def create_app() -> FastAPI:
             "checks": checks,
             "blocking_reasons": blocking,
             "radio": radio_state,
+            "last_status_text": str(mav_status.get("last_status_text") or ""),
         }
 
     def _readiness_snapshot() -> dict[str, object]:
@@ -733,9 +735,11 @@ def create_app() -> FastAPI:
                 origin = {"lng": float(start_ll[0]), "lat": float(start_ll[1])}
             else:
                 origin = {"lng": lng, "lat": lat}
+        map_provider = str(cfg.map_provider or "").strip().lower()
+        tile_template = "/api/map/tile/{z}/{x}/{y}.png" if map_provider == "tencent" else ""
         return {
-            "map_provider": cfg.map_provider,
-            "tile_url_template": "/api/map/tile/{z}/{x}/{y}.png",
+            "map_provider": map_provider,
+            "tile_url_template": tile_template,
             "center_lng_lat": [lng, lat],
             "zoom": int(cfg.map_default_zoom),
             "default_basemap_mode": cfg.map_default_mode,
@@ -1011,75 +1015,113 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail=out)
         return out
 
-    def _run_real_control(fn):
+    def _run_real_control(fn, *, action: str | None = None):
+        def _real_status_snapshot() -> dict[str, object]:
+            status_payload = real_radio.status()
+            mav_status = status_payload.get("mav_status") if isinstance(status_payload.get("mav_status"), dict) else {}
+            mode_now = str(mav_status.get("mode") or "UNKNOWN")
+            return {
+                "armed": bool(mav_status.get("armed")),
+                "resulting_mode": mode_now,
+                "last_status_text": str(mav_status.get("last_status_text") or ""),
+                "recent_status_text": list(mav_status.get("recent_status_text") or []),
+            }
+
         try:
-            return fn()
+            out = fn()
+            payload = dict(out) if isinstance(out, dict) else {}
+            snap = _real_status_snapshot()
+            if action and "action" not in payload:
+                payload["action"] = action
+            payload.setdefault("ok", True)
+            payload.setdefault("armed", snap["armed"])
+            payload.setdefault("resulting_mode", snap["resulting_mode"])
+            payload.setdefault("last_status_text", snap["last_status_text"])
+            payload.setdefault("recent_status_text", snap["recent_status_text"])
+            return payload
         except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc))
+            snap = _real_status_snapshot()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "ok": False,
+                    "action": action or "real_control",
+                    "error": str(exc),
+                    "armed": snap["armed"],
+                    "resulting_mode": snap["resulting_mode"],
+                    "last_status_text": snap["last_status_text"],
+                    "recent_status_text": snap["recent_status_text"],
+                },
+            )
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/api/real/control/arm")
     def real_control_arm() -> dict[str, object]:
-        out = _run_real_control(real_radio.arm)
+        out = _run_real_control(real_radio.arm, action="arm")
         runs.log("REAL_ARM", out)
         return out
 
     @app.post("/api/real/control/disarm")
     def real_control_disarm() -> dict[str, object]:
-        out = _run_real_control(real_radio.disarm)
+        out = _run_real_control(real_radio.disarm, action="disarm")
         runs.log("REAL_DISARM", out)
         return out
 
     @app.post("/api/real/control/takeoff")
     def real_control_takeoff(req: TakeoffRequest) -> dict[str, object]:
-        out = _run_real_control(lambda: real_radio.takeoff(req.alt_m))
+        out = _run_real_control(lambda: real_radio.takeoff(req.alt_m), action="takeoff")
         runs.log("REAL_TAKEOFF", {"alt_m": req.alt_m})
         return out
 
     @app.post("/api/real/control/hold")
     def real_control_hold() -> dict[str, object]:
-        out = _run_real_control(lambda: real_radio.set_mode("LOITER"))
-        mode_now = str((real_radio.status().get("mav_status") or {}).get("mode") or "UNKNOWN")
-        payload = {**out, "target_mode": "LOITER", "resulting_mode": mode_now}
+        out = _run_real_control(lambda: real_radio.set_mode("LOITER"), action="hold")
+        payload = {**out, "action": "hold", "target_mode": "LOITER"}
         runs.log("REAL_HOLD", payload)
         return payload
 
     @app.post("/api/real/control/rtl")
     def real_control_rtl() -> dict[str, object]:
-        out = _run_real_control(real_radio.rtl)
+        out = _run_real_control(real_radio.rtl, action="rtl")
         runs.log("REAL_RTL", out)
         return out
 
     @app.post("/api/real/control/land")
     def real_control_land() -> dict[str, object]:
-        out = _run_real_control(real_radio.land)
+        out = _run_real_control(real_radio.land, action="land")
         runs.log("REAL_LAND", out)
         return out
 
     @app.post("/api/real/control/land_here")
     def real_control_land_here() -> dict[str, object]:
         # LAND mode commands immediate landing at current position.
-        out = _run_real_control(real_radio.land)
+        out = _run_real_control(real_radio.land, action="land_here")
         runs.log("REAL_LAND_HERE", out)
         return out
 
     @app.post("/api/real/control/set_mode")
     def real_control_set_mode(req: ModeRequest) -> dict[str, object]:
-        out = _run_real_control(lambda: real_radio.set_mode(req.mode))
+        out = _run_real_control(lambda: real_radio.set_mode(req.mode), action="set_mode")
         runs.log("REAL_SET_MODE", {"mode": req.mode})
         return out
 
     @app.post("/api/real/control/compass_calibrate/start")
     def real_control_compass_calibrate_start() -> dict[str, object]:
-        out = _run_real_control(real_radio.start_compass_calibration)
+        out = _run_real_control(real_radio.start_compass_calibration, action="compass_calibrate_start")
         runs.log("REAL_COMPASS_CALIBRATE_START", out)
         return out
 
     @app.post("/api/real/control/compass_calibrate/cancel")
     def real_control_compass_calibrate_cancel() -> dict[str, object]:
-        out = _run_real_control(real_radio.cancel_compass_calibration)
+        out = _run_real_control(real_radio.cancel_compass_calibration, action="compass_calibrate_cancel")
         runs.log("REAL_COMPASS_CALIBRATE_CANCEL", out)
+        return out
+
+    @app.post("/api/real/control/level_calibrate")
+    def real_control_level_calibrate() -> dict[str, object]:
+        out = _run_real_control(real_radio.level_calibration, action="level_calibrate")
+        runs.log("REAL_LEVEL_CALIBRATE", out)
         return out
 
     @app.post("/api/real/mission/generate_tiny")
@@ -1189,6 +1231,8 @@ def create_app() -> FastAPI:
             _require_real_autonomy_ready("real_mission_start")
             _require_mission_payload_inside_fence(mission.get_path(), context="real mission start")
             out = real_executor.start_scan(alt_m=req.alt_m, accept_radius_m=req.accept_radius_m)
+            mav_status = real_radio.status().get("mav_status") or {}
+            out = {**out, "last_status_text": str(mav_status.get("last_status_text") or "")}
             runs.log("REAL_MISSION_START", {"alt_m": req.alt_m, "accept_radius_m": req.accept_radius_m})
             return out
         except ValueError as exc:
@@ -1199,12 +1243,16 @@ def create_app() -> FastAPI:
     @app.post("/api/real/mission/stop")
     def real_mission_stop() -> dict[str, object]:
         out = real_executor.stop_scan()
+        mav_status = real_radio.status().get("mav_status") or {}
+        out = {**out, "last_status_text": str(mav_status.get("last_status_text") or "")}
         runs.log("REAL_MISSION_STOP", out)
         return out
 
     @app.get("/api/real/mission/state")
     def real_mission_state() -> dict[str, object]:
-        return real_executor.get_state()
+        out = real_executor.get_state()
+        mav_status = real_radio.status().get("mav_status") or {}
+        return {**out, "last_status_text": str(mav_status.get("last_status_text") or "")}
 
     @app.post("/api/sim/connection/connect")
     def sim_connection_connect() -> dict[str, object]:
@@ -1253,6 +1301,10 @@ def create_app() -> FastAPI:
     @app.post("/api/sim/control/compass_calibrate/cancel")
     def sim_control_compass_calibrate_cancel() -> dict[str, object]:
         return control_compass_calibrate_cancel()
+
+    @app.post("/api/sim/control/level_calibrate")
+    def sim_control_level_calibrate() -> dict[str, object]:
+        return control_level_calibrate()
 
     @app.post("/api/mission/clear")
     def mission_clear() -> dict[str, object]:
@@ -1414,6 +1466,12 @@ def create_app() -> FastAPI:
         runs.log("COMPASS_CALIBRATE_CANCEL", out)
         return out
 
+    @app.post("/api/control/level_calibrate")
+    def control_level_calibrate() -> dict[str, object]:
+        out = _run_control(mav.level_calibration)
+        runs.log("LEVEL_CALIBRATE", out)
+        return out
+
     @app.post("/api/runs/start")
     def runs_start(req: RunStartRequest) -> dict[str, object]:
         try:
@@ -1557,11 +1615,14 @@ def create_app() -> FastAPI:
 
         ctx = ssl.create_default_context()
         last_err: str | None = None
+        attempts = 0
+        max_tencent_attempts = 4
         for host in hosts:
             for url in build_urls(host):
+                attempts += 1
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
                 try:
-                    with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
+                    with urllib.request.urlopen(req, timeout=2.5, context=ctx) as resp:
                         body = resp.read()
                         if not body:
                             continue
@@ -1580,7 +1641,31 @@ def create_app() -> FastAPI:
                             )
                 except Exception as exc:
                     last_err = str(exc)
+                    if attempts >= max_tencent_attempts:
+                        break
                     continue
+            if attempts >= max_tencent_attempts:
+                break
+
+        # Tencent upstream can fail from some networks (TLS handshake timeout, route block).
+        # Degrade gracefully to OSM vector tiles so operators still get a usable basemap.
+        try:
+            osm_url = f"https://tile.openstreetmap.org/{int(z)}/{int(xw)}/{int(yi)}.png"
+            osm_req = urllib.request.Request(
+                osm_url,
+                headers={"User-Agent": "DroneThesis/1.0 (basemap-fallback)"},
+            )
+            with urllib.request.urlopen(osm_req, timeout=4, context=ctx) as osm_resp:
+                body = osm_resp.read()
+                if body and bytes(body[:8]) == b"\x89PNG\r\n\x1a\n":
+                    return Response(
+                        content=bytes(body),
+                        media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=1200"},
+                    )
+        except Exception as exc:
+            if not last_err:
+                last_err = str(exc)
         raise HTTPException(status_code=404, detail=f"tile unavailable: {last_err or 'upstream empty'}")
 
     return app

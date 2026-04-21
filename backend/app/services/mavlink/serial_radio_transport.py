@@ -138,6 +138,8 @@ class RealRadioService:
             "lost": bool(lost),
             "state": state,
             "error_message": str(st.get("last_error") or ""),
+            "last_status_text": str(st.get("last_status_text") or ""),
+            "recent_status_text": list(st.get("recent_status_text") or []),
             "mav_status": st,
         }
 
@@ -183,6 +185,9 @@ class RealRadioService:
 
     def cancel_compass_calibration(self) -> dict[str, Any]:
         return self._mav.cancel_compass_calibration()
+
+    def level_calibration(self) -> dict[str, Any]:
+        return self._mav.level_calibration()
 
     def set_speed(self, speed_m_s: float) -> dict[str, Any]:
         return self._mav.set_speed(speed_m_s)
