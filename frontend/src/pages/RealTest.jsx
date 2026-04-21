@@ -214,6 +214,26 @@ export function RealTest() {
     return { critical, warnings, healthy };
   }, [readiness.checks]);
 
+  const compassCal = useMemo(() => {
+    const raw = status?.compass_calibration;
+    return raw && typeof raw === "object" ? raw : {};
+  }, [status?.compass_calibration]);
+
+  const compassCalState = String(compassCal?.state || "idle").toLowerCase();
+  const compassCalMessage = String(compassCal?.message || "idle");
+  const compassCalProgress = Number(compassCal?.completion_pct);
+  const compassCalProgressLabel = Number.isFinite(compassCalProgress)
+    ? `${Math.max(0, Math.min(100, compassCalProgress)).toFixed(0)}%`
+    : "--";
+  const compassCalActive = ["starting", "running", "waiting_to_start", "cancel_requested"].includes(compassCalState);
+  const compassCalTone = compassCalState === "succeeded"
+    ? "good"
+    : (compassCalState === "failed" || compassCalState === "cancel_failed" || compassCalState === "link_lost")
+      ? "bad"
+      : compassCalActive
+        ? "warn"
+        : "neutral";
+
   const runControlAction = useCallback(
     async (path, label, confirmText = "") => {
       if (confirmText && !window.confirm(confirmText)) return;
@@ -511,7 +531,41 @@ export function RealTest() {
           >
             Land Here
           </button>
+          <button
+            className="real-test-btn"
+            disabled={!status.connected || actionBusy || status.armed || compassCalActive}
+            onClick={() => runControlAction("/api/real/control/compass_calibrate/start", "COMPASS CAL START", "Start compass calibration now? Keep vehicle disarmed and rotate slowly across all axes.")}
+          >
+            Compass Cal Start
+          </button>
+          <button
+            className="real-disconnect-btn"
+            disabled={!status.connected || actionBusy || !compassCalActive}
+            onClick={() => runControlAction("/api/real/control/compass_calibrate/cancel", "COMPASS CAL CANCEL", "Cancel compass calibration now?")}
+          >
+            Compass Cal Cancel
+          </button>
         </div>
+        <div className="status-pill-grid real-pill-grid compact-pill-grid">
+          <div className={`status-pill tone-${compassCalTone}`}>
+            <span>Compass Cal</span>
+            <strong>{compassCalState.toUpperCase()}</strong>
+          </div>
+          <div className={`status-pill tone-${compassCalActive ? "warn" : "neutral"}`}>
+            <span>Progress</span>
+            <strong>{compassCalProgressLabel}</strong>
+          </div>
+          <div className="status-pill tone-neutral">
+            <span>Compass ID</span>
+            <strong>{compassCal?.compass_id ?? "--"}</strong>
+          </div>
+          <div className="status-pill tone-neutral">
+            <span>Cal Status</span>
+            <strong>{String(compassCal?.cal_status_label || "--").toUpperCase()}</strong>
+          </div>
+        </div>
+        <p className={`hint ${compassCalTone === "bad" ? "bad" : ""}`}>Compass calibration: {compassCalMessage}</p>
+        <p className="hint">Field workflow: keep the vehicle disarmed, move away from metal/rebar, rotate through all axes slowly until status reaches SUCCESS, then arm.</p>
       </section>
 
       <section className="panel real-panel real-widget real-widget-map real-widget-wide">

@@ -1070,6 +1070,18 @@ def create_app() -> FastAPI:
         runs.log("REAL_SET_MODE", {"mode": req.mode})
         return out
 
+    @app.post("/api/real/control/compass_calibrate/start")
+    def real_control_compass_calibrate_start() -> dict[str, object]:
+        out = _run_real_control(real_radio.start_compass_calibration)
+        runs.log("REAL_COMPASS_CALIBRATE_START", out)
+        return out
+
+    @app.post("/api/real/control/compass_calibrate/cancel")
+    def real_control_compass_calibrate_cancel() -> dict[str, object]:
+        out = _run_real_control(real_radio.cancel_compass_calibration)
+        runs.log("REAL_COMPASS_CALIBRATE_CANCEL", out)
+        return out
+
     @app.post("/api/real/mission/generate_tiny")
     def real_mission_generate_tiny(req: TinyMissionRequest) -> dict[str, object]:
         try:
@@ -1234,6 +1246,14 @@ def create_app() -> FastAPI:
     def sim_control_battery_reset() -> dict[str, object]:
         return control_battery_reset()
 
+    @app.post("/api/sim/control/compass_calibrate/start")
+    def sim_control_compass_calibrate_start() -> dict[str, object]:
+        return control_compass_calibrate_start()
+
+    @app.post("/api/sim/control/compass_calibrate/cancel")
+    def sim_control_compass_calibrate_cancel() -> dict[str, object]:
+        return control_compass_calibrate_cancel()
+
     @app.post("/api/mission/clear")
     def mission_clear() -> dict[str, object]:
         try:
@@ -1380,6 +1400,18 @@ def create_app() -> FastAPI:
     def control_battery_reset() -> dict[str, object]:
         out = _run_control(mav.battery_reset)
         runs.log("BATTERY_RESET", out)
+        return out
+
+    @app.post("/api/control/compass_calibrate/start")
+    def control_compass_calibrate_start() -> dict[str, object]:
+        out = _run_control(mav.start_compass_calibration)
+        runs.log("COMPASS_CALIBRATE_START", out)
+        return out
+
+    @app.post("/api/control/compass_calibrate/cancel")
+    def control_compass_calibrate_cancel() -> dict[str, object]:
+        out = _run_control(mav.cancel_compass_calibration)
+        runs.log("COMPASS_CALIBRATE_CANCEL", out)
         return out
 
     @app.post("/api/runs/start")

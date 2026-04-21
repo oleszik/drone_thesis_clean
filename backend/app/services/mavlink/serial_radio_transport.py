@@ -178,6 +178,12 @@ class RealRadioService:
     def set_mode(self, mode: str) -> dict[str, Any]:
         return self._mav.set_mode(mode)
 
+    def start_compass_calibration(self, *, retry_on_failure: bool = True, autosave: bool = True) -> dict[str, Any]:
+        return self._mav.start_compass_calibration(retry_on_failure=retry_on_failure, autosave=autosave)
+
+    def cancel_compass_calibration(self) -> dict[str, Any]:
+        return self._mav.cancel_compass_calibration()
+
     def set_speed(self, speed_m_s: float) -> dict[str, Any]:
         return self._mav.set_speed(speed_m_s)
 

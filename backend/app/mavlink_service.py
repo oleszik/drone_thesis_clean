@@ -37,6 +37,7 @@ class MavlinkService:
             "armed": False,
             "mode": "UNKNOWN",
             "failsafes": {"gps_ok": False, "ekf_ok": False, "battery_low": False},
+            "compass_calibration": self._new_compass_calibration_status(),
             "connection_url": settings.connection_url,
             "last_error": "",
             "last_heartbeat_age_s": None,
@@ -60,6 +61,122 @@ class MavlinkService:
             "updated_at_unix": None,
         }
         self._track: deque[dict[str, Any]] = deque(maxlen=max(100, int(settings.track_max_points)))
+
+    @staticmethod
+    def _new_compass_calibration_status() -> dict[str, Any]:
+        return {
+            "state": "idle",
+            "message": "idle",
+            "completion_pct": None,
+            "attempt": None,
+            "compass_id": None,
+            "cal_status": None,
+            "cal_status_label": None,
+            "started_at_unix": None,
+            "updated_at_unix": None,
+            "report": None,
+        }
+
+    @staticmethod
+    def _safe_int(v: Any) -> int | None:
+        try:
+            return int(v)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _safe_float(v: Any) -> float | None:
+        try:
+            out = float(v)
+        except Exception:
+            return None
+        if not math.isfinite(out):
+            return None
+        return out
+
+    @staticmethod
+    def _command_result_label(result_code: int | None) -> str:
+        if result_code is None:
+            return "unknown"
+        if mavutil is not None:
+            try:
+                enum_tbl = mavutil.mavlink.enums.get("MAV_RESULT")
+                if isinstance(enum_tbl, dict):
+                    enum_value = enum_tbl.get(int(result_code))
+                    name = str(getattr(enum_value, "name", "") or "").strip()
+                    if name:
+                        return name.lower()
+            except Exception:
+                pass
+        return f"result_{int(result_code)}"
+
+    @staticmethod
+    def _mag_cal_status_label(status_code: int | None) -> str:
+        if status_code is None:
+            return "unknown"
+        if mavutil is not None:
+            try:
+                enum_tbl = mavutil.mavlink.enums.get("MAV_MAG_CAL_STATUS")
+                if isinstance(enum_tbl, dict):
+                    enum_value = enum_tbl.get(int(status_code))
+                    name = str(getattr(enum_value, "name", "") or "").strip()
+                    if name.startswith("MAV_MAG_CAL_"):
+                        name = name[len("MAV_MAG_CAL_") :]
+                    if name:
+                        return name.lower()
+            except Exception:
+                pass
+        fallback = {
+            0: "not_started",
+            1: "waiting_to_start",
+            2: "running_step_one",
+            3: "running_step_two",
+            4: "success",
+            5: "failed",
+            6: "bad_orientation",
+            7: "bad_radius",
+        }
+        return fallback.get(int(status_code), f"status_{int(status_code)}")
+
+    @staticmethod
+    def _mag_cal_success_status_code() -> int:
+        if mavutil is None:
+            return 4
+        return int(getattr(mavutil.mavlink, "MAV_MAG_CAL_SUCCESS", 4))
+
+    @staticmethod
+    def _mag_cal_failure_status_codes() -> set[int]:
+        fallback = {5, 6, 7}
+        if mavutil is None:
+            return fallback
+        out = set()
+        for name in ("MAV_MAG_CAL_FAILED", "MAV_MAG_CAL_BAD_ORIENTATION", "MAV_MAG_CAL_BAD_RADIUS"):
+            val = getattr(mavutil.mavlink, name, None)
+            if isinstance(val, int):
+                out.add(int(val))
+        return out or fallback
+
+    @staticmethod
+    def _mag_cal_start_cmd() -> int:
+        if mavutil is None:
+            return 42424
+        return int(getattr(mavutil.mavlink, "MAV_CMD_DO_START_MAG_CAL", 42424))
+
+    @staticmethod
+    def _mag_cal_cancel_cmd() -> int:
+        if mavutil is None:
+            return 42425
+        return int(getattr(mavutil.mavlink, "MAV_CMD_DO_CANCEL_MAG_CAL", 42425))
+
+    def _set_compass_calibration(self, **updates: Any) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            cur = self._status.get("compass_calibration")
+            if not isinstance(cur, dict):
+                cur = self._new_compass_calibration_status()
+            cur = {**cur, **updates, "updated_at_unix": now}
+            self._status["compass_calibration"] = cur
+            return dict(cur)
 
     @staticmethod
     def _is_autopilot_heartbeat(msg: Any) -> bool:
@@ -174,6 +291,69 @@ class MavlinkService:
     def rtl(self) -> dict[str, Any]:
         self.set_mode("RTL")
         return {"ok": True, "action": "rtl"}
+
+    def start_compass_calibration(self, *, retry_on_failure: bool = True, autosave: bool = True) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        st = self.get_status()
+        if bool(st.get("armed")):
+            raise RuntimeError("vehicle must be disarmed before compass calibration")
+        master = self._require_master()
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            self._mag_cal_start_cmd(),
+            0,
+            0,  # all available compasses
+            1 if bool(retry_on_failure) else 0,
+            1 if bool(autosave) else 0,
+            0,  # no start delay
+            0,  # no auto reboot
+            0,
+            0,
+        )
+        cal = self._set_compass_calibration(
+            state="starting",
+            message="start command sent; keep disarmed and rotate vehicle on all axes",
+            completion_pct=0,
+            attempt=1,
+            started_at_unix=time.time(),
+            report=None,
+        )
+        return {
+            "ok": True,
+            "action": "start_compass_calibration",
+            "retry_on_failure": bool(retry_on_failure),
+            "autosave": bool(autosave),
+            "compass_calibration": cal,
+        }
+
+    def cancel_compass_calibration(self) -> dict[str, Any]:
+        if mavutil is None:
+            raise RuntimeError("pymavlink is not installed")
+        master = self._require_master()
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            self._mag_cal_cancel_cmd(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        cal = self._set_compass_calibration(
+            state="cancel_requested",
+            message="cancel command sent",
+        )
+        return {
+            "ok": True,
+            "action": "cancel_compass_calibration",
+            "compass_calibration": cal,
+        }
 
     def battery_reset(self) -> dict[str, Any]:
         if mavutil is None:
@@ -327,6 +507,16 @@ class MavlinkService:
             master = self._master
             self._master = None
             self._status["connected"] = False
+            cur = self._status.get("compass_calibration")
+            if isinstance(cur, dict):
+                state = str(cur.get("state") or "").strip().lower()
+                if state in {"starting", "running", "waiting_to_start", "cancel_requested"}:
+                    self._status["compass_calibration"] = {
+                        **cur,
+                        "state": "link_lost",
+                        "message": "mavlink disconnected during compass calibration",
+                        "updated_at_unix": time.time(),
+                    }
         if master is None:
             return
         try:
@@ -405,6 +595,7 @@ class MavlinkService:
             self._status["connected"] = True
             self._status["connection_url"] = str(conn_url)
             self._status["last_error"] = ""
+            self._status["compass_calibration"] = self._new_compass_calibration_status()
         return True
 
     def _request_data_streams(self, master: Any) -> None:
@@ -467,6 +658,93 @@ class MavlinkService:
                 self._status["armed"] = armed
                 self._status["mode"] = mode_name
                 self._status["connected"] = True
+            return
+
+        if msg_type == "COMMAND_ACK":
+            command = self._safe_int(getattr(msg, "command", None))
+            result = self._safe_int(getattr(msg, "result", None))
+            if command in {self._mag_cal_start_cmd(), self._mag_cal_cancel_cmd()}:
+                result_label = self._command_result_label(result)
+                accepted = False
+                if mavutil is not None:
+                    accepted = result in {
+                        int(getattr(mavutil.mavlink, "MAV_RESULT_ACCEPTED", 0)),
+                        int(getattr(mavutil.mavlink, "MAV_RESULT_IN_PROGRESS", 5)),
+                    }
+                else:
+                    accepted = result in {0, 5}
+                if command == self._mag_cal_start_cmd() and not accepted:
+                    self._set_compass_calibration(
+                        state="failed",
+                        message=f"start rejected: {result_label}",
+                        cal_status=result,
+                        cal_status_label=result_label,
+                    )
+                if command == self._mag_cal_cancel_cmd():
+                    self._set_compass_calibration(
+                        state="cancelled" if accepted else "cancel_failed",
+                        message=("calibration cancelled" if accepted else f"cancel rejected: {result_label}"),
+                        cal_status=result,
+                        cal_status_label=result_label,
+                    )
+            return
+
+        if msg_type == "MAG_CAL_PROGRESS":
+            completion_pct = self._safe_int(getattr(msg, "completion_pct", None))
+            cal_status = self._safe_int(getattr(msg, "cal_status", None))
+            cal_status_label = self._mag_cal_status_label(cal_status)
+            step_state = "waiting_to_start" if "waiting" in cal_status_label else "running"
+            message = (
+                "waiting to start compass calibration"
+                if step_state == "waiting_to_start"
+                else f"compass calibration running ({completion_pct if completion_pct is not None else '--'}%)"
+            )
+            current = self._set_compass_calibration(
+                state=step_state,
+                message=message,
+                completion_pct=completion_pct,
+                attempt=self._safe_int(getattr(msg, "attempt", None)),
+                compass_id=self._safe_int(getattr(msg, "compass_id", None)),
+                cal_status=cal_status,
+                cal_status_label=cal_status_label,
+            )
+            if current.get("started_at_unix") is None:
+                self._set_compass_calibration(started_at_unix=time.time())
+            return
+
+        if msg_type == "MAG_CAL_REPORT":
+            cal_status = self._safe_int(getattr(msg, "cal_status", None))
+            cal_status_label = self._mag_cal_status_label(cal_status)
+            success = cal_status == self._mag_cal_success_status_code()
+            failure = cal_status in self._mag_cal_failure_status_codes()
+            state = "succeeded" if success else ("failed" if failure else "reported")
+            report = {
+                "compass_id": self._safe_int(getattr(msg, "compass_id", None)),
+                "cal_status": cal_status,
+                "cal_status_label": cal_status_label,
+                "autosaved": bool(self._safe_int(getattr(msg, "autosaved", None)) or 0),
+                "fitness": self._safe_float(getattr(msg, "fitness", None)),
+                "ofs_x": self._safe_float(getattr(msg, "ofs_x", None)),
+                "ofs_y": self._safe_float(getattr(msg, "ofs_y", None)),
+                "ofs_z": self._safe_float(getattr(msg, "ofs_z", None)),
+                "diag_x": self._safe_float(getattr(msg, "diag_x", None)),
+                "diag_y": self._safe_float(getattr(msg, "diag_y", None)),
+                "diag_z": self._safe_float(getattr(msg, "diag_z", None)),
+            }
+            message = (
+                "compass calibration complete and saved"
+                if success
+                else f"compass calibration ended with status {cal_status_label}"
+            )
+            self._set_compass_calibration(
+                state=state,
+                message=message,
+                completion_pct=100 if success else self._safe_int(getattr(msg, "completion_pct", None)),
+                compass_id=report["compass_id"],
+                cal_status=cal_status,
+                cal_status_label=cal_status_label,
+                report=report,
+            )
             return
 
         if msg_type == "GLOBAL_POSITION_INT":
