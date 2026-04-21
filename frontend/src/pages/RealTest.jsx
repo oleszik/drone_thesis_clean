@@ -66,6 +66,18 @@ function fmt(v, suffix = "") {
   return `${Number(v).toFixed(1)}${suffix}`;
 }
 
+function isPreferredSerialPort(port) {
+  const p = String(port || "").trim().toLowerCase();
+  if (!p) return false;
+  return p.startsWith("/dev/ttyusb") || p.startsWith("/dev/ttyacm") || p.startsWith("com");
+}
+
+function pickSuggestedSerialPort(ports) {
+  if (!Array.isArray(ports)) return "";
+  const firstPreferred = ports.find((item) => isPreferredSerialPort(item?.port));
+  return String(firstPreferred?.port || "");
+}
+
 export function RealTest() {
   const [readiness, setReadiness] = useState({
     overall_ready: false,
@@ -221,9 +233,9 @@ export function RealTest() {
         }
         if (!serialPort) {
           const current = statusResp?.serial_port;
-          const firstPort = ports[0]?.port;
+          const suggestedPort = pickSuggestedSerialPort(ports);
           if (current) setSerialPort(String(current));
-          else if (firstPort) setSerialPort(String(firstPort));
+          else if (suggestedPort) setSerialPort(suggestedPort);
         }
       } catch {
         if (!cancelled) {
@@ -610,6 +622,9 @@ export function RealTest() {
               </select>
             </label>
           </div>
+          {!serialPort && radioPorts.length > 0 && !pickSuggestedSerialPort(radioPorts) ? (
+            <p className="hint">No USB/ACM radio port auto-detected; enter device path manually (for example /dev/ttyUSB0).</p>
+          ) : null}
           {portsError ? <p className="hint bad">Port scan: {portsError} (you can still type COM port manually)</p> : null}
           <div className="real-radio-actions real-action-row cols-3">
             <button className="real-connect-btn" disabled={actionBusy || !serialPort} onClick={connectRadio}>Connect</button>

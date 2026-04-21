@@ -31,6 +31,41 @@ def _xy_to_ll(origin_lng: float, origin_lat: float, x_m: float, y_m: float) -> t
     return lng, lat
 
 
+def _max_forward_inside_fence(
+    *,
+    start_lng: float,
+    start_lat: float,
+    yaw_rad: float,
+    requested_forward_m: float,
+    fence_polygon_lng_lat: list[list[float]],
+) -> float:
+    requested = max(0.0, float(requested_forward_m))
+    if requested <= 0.0:
+        return 0.0
+    if not point_inside_polygon(float(start_lng), float(start_lat), fence_polygon_lng_lat):
+        return -1.0
+
+    def _inside_at(distance_m: float) -> bool:
+        dx = math.sin(yaw_rad) * float(distance_m)
+        dy = math.cos(yaw_rad) * float(distance_m)
+        lng, lat = _xy_to_ll(start_lng, start_lat, dx, dy)
+        return point_inside_polygon(float(lng), float(lat), fence_polygon_lng_lat)
+
+    if _inside_at(requested):
+        return requested
+
+    lo = 0.0
+    hi = requested
+    # Binary-search the furthest in-fence target along heading.
+    for _ in range(20):
+        mid = 0.5 * (lo + hi)
+        if _inside_at(mid):
+            lo = mid
+        else:
+            hi = mid
+    return max(0.0, lo)
+
+
 def _ll_distance_m(a_lng: float, a_lat: float, b_lng: float, b_lat: float) -> float:
     dx, dy = _ll_to_xy_m(a_lng, a_lat, b_lng, b_lat)
     return math.hypot(dx, dy)
@@ -622,25 +657,36 @@ class MissionService:
         start = [float(start_lng), float(start_lat)]
         yaw_deg = float(heading_deg) if heading_deg is not None else 0.0
         yaw_rad = math.radians(yaw_deg)
-        dx = math.sin(yaw_rad) * move_forward_m
-        dy = math.cos(yaw_rad) * move_forward_m
-        target_lng, target_lat = _xy_to_ll(start[0], start[1], dx, dy)
-        target = [float(target_lng), float(target_lat)]
+        effective_forward_m = float(move_forward_m)
 
         if fence_polygon_lng_lat is not None:
-            for lng, lat in (start, target):
-                if not point_inside_polygon(float(lng), float(lat), fence_polygon_lng_lat):
-                    raise ValueError("tiny mission target is outside configured fence")
+            max_forward = _max_forward_inside_fence(
+                start_lng=float(start[0]),
+                start_lat=float(start[1]),
+                yaw_rad=yaw_rad,
+                requested_forward_m=effective_forward_m,
+                fence_polygon_lng_lat=fence_polygon_lng_lat,
+            )
+            if max_forward < 0.0:
+                raise ValueError("tiny mission start point is outside configured fence")
+            if max_forward < 0.5:
+                raise ValueError("tiny mission target is outside configured fence")
+            effective_forward_m = max(0.5, max_forward)
+
+        dx = math.sin(yaw_rad) * effective_forward_m
+        dy = math.cos(yaw_rad) * effective_forward_m
+        target_lng, target_lat = _xy_to_ll(start[0], start[1], dx, dy)
+        target = [float(target_lng), float(target_lat)]
 
         path_lng_lat = [list(start), list(target), list(start)]
         profile = [
             {"step": 1, "action": "takeoff", "alt_m": altitude},
             {"step": 2, "action": "hold", "duration_s": hover_1},
-            {"step": 3, "action": "move_forward", "distance_m": move_forward_m, "speed_m_s": speed},
+            {"step": 3, "action": "move_forward", "distance_m": effective_forward_m, "speed_m_s": speed},
             {"step": 4, "action": "hold", "duration_s": hover_2},
             {"step": 5, "action": "rtl"},
         ]
-        out_and_back_m = 2.0 * move_forward_m
+        out_and_back_m = 2.0 * effective_forward_m
         preview = MissionPreview(
             expected_coverage_pct=0.0,
             estimated_time_s=(out_and_back_m / speed) + hover_1 + hover_2,
@@ -666,7 +712,7 @@ class MissionService:
                 "command_profile": profile,
                 "takeoff_alt_m": altitude,
                 "hover_before_s": hover_1,
-                "forward_m": move_forward_m,
+                "forward_m": effective_forward_m,
                 "hover_after_s": hover_2,
                 "speed_m_s": speed,
                 "heading_deg": yaw_deg,
