@@ -103,24 +103,14 @@ class ReadinessService:
         battery_low = bool(battery_low_flag) if battery_low_flag is not None else None
         battery_msg = ""
         battery_reason = ""
-        # Prefer FC failsafe battery state when available but never mark healthy on missing battery telemetry.
-        if battery_pct is None and battery_low is None:
-            battery_ok = False
-            battery_reason = "battery monitor not configured or telemetry missing"
-            battery_msg = "battery status unavailable"
-        elif battery_pct is None and battery_low is False:
-            battery_ok = False
-            battery_reason = "battery percent unavailable"
-            battery_msg = "battery status unavailable (battery_percent missing)"
-        elif battery_low is True:
+        battery_severity = "critical"
+        # Keep explicit low-battery as critical, but do not hard-block when the FC does not publish battery percent.
+        if battery_low is True:
             battery_ok = False
             battery_reason = "battery failsafe low"
             battery_msg = f"battery low (pct={battery_pct})"
-        elif battery_pct is None:
-            battery_ok = False
-            battery_reason = "battery status unavailable"
-            battery_msg = "battery status unavailable"
-        else:
+            battery_severity = "critical"
+        elif battery_pct is not None:
             battery_ok = battery_pct >= 25.0
             battery_reason = "ok" if battery_ok else "battery percent below threshold"
             battery_msg = (
@@ -128,11 +118,17 @@ class ReadinessService:
                 if battery_ok
                 else f"battery not ready (pct={battery_pct}, fc_low={battery_low})"
             )
+            battery_severity = "critical"
+        else:
+            battery_ok = True
+            battery_reason = "battery telemetry unavailable"
+            battery_msg = "battery status unavailable (warning only; verify pack manually)"
+            battery_severity = "warning"
         checks.append(
             {
                 "key": "battery_ok",
                 "ok": battery_ok,
-                "severity": "critical",
+                "severity": battery_severity,
                 "message": battery_msg,
                 "value": {
                     "battery_percent": battery_pct,
@@ -229,7 +225,7 @@ class ReadinessService:
         provider = str(self._cfg.map_provider or "").strip().lower()
         frontend_ok = bool(str(self._cfg.frontend_origin or "").strip())
         map_key_ok = True if provider != "tencent" else bool(str(self._cfg.tencent_key or "").strip())
-        backend_config_ok = frontend_ok and map_key_ok
+        backend_config_ok = frontend_ok
         checks.append(
             {
                 "key": "backend_config_ok",
@@ -238,6 +234,23 @@ class ReadinessService:
                 "message": "backend config is valid" if backend_config_ok else "backend config is incomplete",
                 "value": {
                     "frontend_origin_set": frontend_ok,
+                    "map_provider": provider,
+                    "map_key_ok": map_key_ok,
+                },
+            }
+        )
+
+        checks.append(
+            {
+                "key": "map_tiles_config_ok",
+                "ok": map_key_ok,
+                "severity": "warning",
+                "message": (
+                    "map tiles config is valid"
+                    if map_key_ok
+                    else "tencent map key is missing; map tiles may be unavailable"
+                ),
+                "value": {
                     "map_provider": provider,
                     "map_key_ok": map_key_ok,
                 },

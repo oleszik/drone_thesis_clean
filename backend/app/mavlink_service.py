@@ -89,6 +89,22 @@ class MavlinkService:
         }
 
     @staticmethod
+    def _format_connect_error(exc: Exception, conn_url: str) -> str:
+        msg = str(exc)
+        low = msg.lower()
+        if "permission denied" in low:
+            return (
+                f"{msg}. Permission denied opening serial device; add your user to the dialout group "
+                "and re-login."
+            )
+        if "could not configure port" in low and "input/output error" in low:
+            return (
+                f"{msg}. Serial I/O error while opening {conn_url}; verify the selected port is the radio "
+                "device (usually /dev/ttyUSB* or /dev/ttyACM*), and check cable/radio power."
+            )
+        return msg
+
+    @staticmethod
     def _safe_int(v: Any) -> int | None:
         try:
             return int(v)
@@ -816,7 +832,7 @@ class MavlinkService:
         except Exception as exc:
             with self._lock:
                 self._status["connected"] = False
-                self._status["last_error"] = f"connect failed: {exc}"
+                self._status["last_error"] = f"connect failed: {self._format_connect_error(exc, str(conn_url))}"
             return False
 
         with self._lock:
