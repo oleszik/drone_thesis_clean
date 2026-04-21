@@ -1,0 +1,13 @@
+run,success_rate,coverage_mean,steps_mean,crash_rate,episodes
+scan_v27_ablateB_lategain_lr5e5,10.0%,72.1%,2206.7,0.0%,100
+scan_v28_ablateC_stalltiny_lr5e5,5.0%,67.6%,2296.4,0.0%,100
+scan_v29_b_globalcov001_lategain001_oobgr3_lr5e5_1m,64.0%,87.6%,1384.8,0.0%,100
+scan_v30_b_globalcov001_lategain001_oobgr3_lr5e5_ent0p005_1m,10.0%,69.6%,2220.2,0.0%,100
+scan_v31_cont_from_v29_p1m,13.0%,73.8%,2127.3,0.0%,100
+scan_v32_b125_from_v29_p1m,54.0%,84.7%,1594.3,0.0%,100
+scan_v33_b15_from_v29_p1m,29.0%,80.1%,1827.4,0.0%,100
+scan_v34_cont_from_v31_p1m,16.0%,75.0%,2064.4,0.0%,100
+scan_v35_b125_t85_from_v29_p1m,72.0%,86.8%,1182.9,0.0%,100
+scan_v36_cont_from_v35_gated1m,69.0%,85.5%,NA,0.0%,100
+scan_v37_short_sweeps_from_v35,70.0%,87.0%,NA,0.0%,100
+scan_v37_short_sweeps_from_v35_baselineonly,69.0%,85.5%,NA,0.0%,100
