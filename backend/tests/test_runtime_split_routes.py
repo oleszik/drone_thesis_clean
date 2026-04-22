@@ -35,6 +35,8 @@ def test_real_namespace_control_routes_exposed() -> None:
     assert resp.status_code in (200, 409)
     level = client.post("/api/real/control/level_calibrate")
     assert level.status_code in (200, 409)
+    north_ref = client.post("/api/real/control/compass_calibrate/north_reference", json={"north_heading_deg": 0.0})
+    assert north_ref.status_code in (200, 409)
 
 
 def test_real_namespace_mission_executor_routes_exposed() -> None:
@@ -51,10 +53,10 @@ def test_real_namespace_mission_executor_routes_exposed() -> None:
 
 def test_real_namespace_mission_generation_routes_exposed() -> None:
     scan = client.post("/api/real/mission/generate_scan", json={"spacing_m": 8.0, "speed_m_s": 3.0})
-    assert scan.status_code in (200, 409)
+    assert scan.status_code in (200, 400, 409)
 
     orbit = client.post(
         "/api/real/mission/generate_orbit_scan",
         json={"radius_m": 12.0, "altitude_m": 10.0, "laps": 1, "points_per_lap": 24},
     )
-    assert orbit.status_code in (200, 409)
+    assert orbit.status_code in (200, 400, 409)

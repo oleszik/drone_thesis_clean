@@ -49,3 +49,26 @@ def test_tiny_mission_rejects_outside_fence() -> None:
         assert False, "expected ValueError"
     except ValueError as exc:
         assert "outside configured fence" in str(exc)
+
+
+def test_tiny_vertical_profile_shape() -> None:
+    mission = MissionService(footprint_radius_m=6.0)
+    out = mission.generate_tiny_mission(
+        start_lng=116.397428,
+        start_lat=39.90923,
+        mission_profile="vertical_hop",
+        takeoff_alt_m=3.0,
+        hover_before_s=4.0,
+    )
+
+    assert out["mission_type"] == "tiny_mission"
+    assert len(out["waypoints_lng_lat"]) == 2
+    assert out["waypoints_lng_lat"][0] == out["waypoints_lng_lat"][1]
+
+    cfg = out["config"]
+    assert cfg["preset"] == "tiny_vertical_mission"
+    assert cfg["mission_profile"] == "vertical_hop"
+    assert cfg["forward_m"] == 0.0
+    assert cfg["hover_after_s"] == 0.0
+    profile = cfg["command_profile"]
+    assert [step["action"] for step in profile] == ["takeoff", "hold", "land", "disarm"]

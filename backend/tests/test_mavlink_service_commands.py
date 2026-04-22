@@ -218,3 +218,28 @@ def test_level_calibration_timeout_failure(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(RuntimeError, match="timed out waiting for COMMAND_ACK"):
         svc.level_calibration(timeout_s=0.12)
+
+
+def test_set_compass_north_reference_success() -> None:
+    svc, _ = _build_service()
+    with svc._lock:
+        svc._telemetry["yaw_deg"] = 37.5
+
+    out = svc.set_compass_north_reference(north_heading_deg=0.0)
+    assert out["ok"] is True
+    assert out["action"] == "compass_north_reference"
+    assert abs(float(out["north_heading_deg"]) - 0.0) < 1e-6
+    assert abs(float(out["measured_yaw_deg"]) - 37.5) < 1e-6
+
+    tele = svc.get_telemetry()
+    aligned = tele.get("yaw_aligned_deg")
+    assert aligned is not None
+    assert abs(float(aligned) - 0.0) < 1e-6
+
+
+def test_set_compass_north_reference_requires_yaw() -> None:
+    svc, _ = _build_service()
+    with svc._lock:
+        svc._telemetry["yaw_deg"] = None
+    with pytest.raises(RuntimeError, match="current yaw is unavailable"):
+        svc.set_compass_north_reference(north_heading_deg=0.0)

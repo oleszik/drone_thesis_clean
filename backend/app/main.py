@@ -75,6 +75,7 @@ class MissionGenerateRequest(BaseModel):
 
 
 class TinyMissionRequest(BaseModel):
+    mission_profile: str = "out_and_back"
     takeoff_alt_m: float = 3.0
     hover_before_s: float = 8.0
     forward_m: float = 3.0
@@ -108,6 +109,10 @@ class RunNotesRequest(BaseModel):
 class RealRadioConnectRequest(BaseModel):
     serial_port: str
     serial_baud: int = 57600
+
+
+class CompassNorthReferenceRequest(BaseModel):
+    north_heading_deg: float = 0.0
 
 
 def _model_to_dict(model: BaseModel) -> dict[str, object]:
@@ -916,6 +921,7 @@ def create_app() -> FastAPI:
                 start_lng=float(start_lng),
                 start_lat=float(start_lat),
                 heading_deg=(float(heading_deg) if heading_deg is not None else None),
+                mission_profile=req.mission_profile,
                 takeoff_alt_m=req.takeoff_alt_m,
                 hover_before_s=req.hover_before_s,
                 forward_m=req.forward_m,
@@ -928,6 +934,7 @@ def create_app() -> FastAPI:
             runs.log(
                 "MISSION_TINY_GENERATED",
                 {
+                    "mission_profile": req.mission_profile,
                     "takeoff_alt_m": req.takeoff_alt_m,
                     "hover_before_s": req.hover_before_s,
                     "forward_m": req.forward_m,
@@ -1124,6 +1131,15 @@ def create_app() -> FastAPI:
         runs.log("REAL_LEVEL_CALIBRATE", out)
         return out
 
+    @app.post("/api/real/control/compass_calibrate/north_reference")
+    def real_control_compass_calibrate_north_reference(req: CompassNorthReferenceRequest) -> dict[str, object]:
+        out = _run_real_control(
+            lambda: real_radio.set_compass_north_reference(north_heading_deg=req.north_heading_deg),
+            action="compass_calibrate_north_reference",
+        )
+        runs.log("REAL_COMPASS_CALIBRATE_NORTH_REFERENCE", out)
+        return out
+
     @app.post("/api/real/mission/generate_tiny")
     def real_mission_generate_tiny(req: TinyMissionRequest) -> dict[str, object]:
         try:
@@ -1138,6 +1154,7 @@ def create_app() -> FastAPI:
                 start_lng=float(start_lng),
                 start_lat=float(start_lat),
                 heading_deg=(float(heading_deg) if heading_deg is not None else None),
+                mission_profile=req.mission_profile,
                 takeoff_alt_m=req.takeoff_alt_m,
                 hover_before_s=req.hover_before_s,
                 forward_m=req.forward_m,
@@ -1150,6 +1167,7 @@ def create_app() -> FastAPI:
             runs.log(
                 "REAL_MISSION_TINY_GENERATED",
                 {
+                    "mission_profile": req.mission_profile,
                     "takeoff_alt_m": req.takeoff_alt_m,
                     "hover_before_s": req.hover_before_s,
                     "forward_m": req.forward_m,
@@ -1305,6 +1323,10 @@ def create_app() -> FastAPI:
     @app.post("/api/sim/control/level_calibrate")
     def sim_control_level_calibrate() -> dict[str, object]:
         return control_level_calibrate()
+
+    @app.post("/api/sim/control/compass_calibrate/north_reference")
+    def sim_control_compass_calibrate_north_reference(req: CompassNorthReferenceRequest) -> dict[str, object]:
+        return control_compass_calibrate_north_reference(req)
 
     @app.post("/api/mission/clear")
     def mission_clear() -> dict[str, object]:
@@ -1470,6 +1492,12 @@ def create_app() -> FastAPI:
     def control_level_calibrate() -> dict[str, object]:
         out = _run_control(mav.level_calibration)
         runs.log("LEVEL_CALIBRATE", out)
+        return out
+
+    @app.post("/api/control/compass_calibrate/north_reference")
+    def control_compass_calibrate_north_reference(req: CompassNorthReferenceRequest) -> dict[str, object]:
+        out = _run_control(lambda: mav.set_compass_north_reference(north_heading_deg=req.north_heading_deg))
+        runs.log("COMPASS_CALIBRATE_NORTH_REFERENCE", out)
         return out
 
     @app.post("/api/runs/start")

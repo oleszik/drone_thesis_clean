@@ -31,6 +31,24 @@ class MavlinkService:
     TAKEOFF_MIN_RISE_M = 0.8
     LEVEL_CAL_ACK_TIMEOUT_S = 6.0
 
+    @staticmethod
+    def _new_compass_heading_alignment() -> dict[str, Any]:
+        return {
+            "state": "idle",
+            "message": "north reference not set",
+            "north_heading_deg": 0.0,
+            "measured_yaw_deg": None,
+            "yaw_offset_deg": 0.0,
+            "calibrated_at_unix": None,
+        }
+
+    @staticmethod
+    def _normalize_heading_deg(v: float) -> float:
+        heading = float(v) % 360.0
+        if heading < 0.0:
+            heading += 360.0
+        return heading
+
     def __init__(self, settings: MavlinkSettings) -> None:
         self._settings = settings
         self._lock = threading.Lock()
@@ -45,6 +63,7 @@ class MavlinkService:
             "mode": "UNKNOWN",
             "failsafes": {"gps_ok": False, "ekf_ok": False, "battery_low": None},
             "compass_calibration": self._new_compass_calibration_status(),
+            "compass_heading_alignment": self._new_compass_heading_alignment(),
             "connection_url": settings.connection_url,
             "last_error": "",
             "last_heartbeat_age_s": None,
@@ -317,7 +336,50 @@ class MavlinkService:
 
     def get_telemetry(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._telemetry)
+            out = dict(self._telemetry)
+            yaw_now = self._safe_float(out.get("yaw_deg"))
+            align = self._status.get("compass_heading_alignment")
+            if yaw_now is not None and isinstance(align, dict) and str(align.get("state") or "") == "aligned":
+                offset = self._safe_float(align.get("yaw_offset_deg")) or 0.0
+                out["yaw_aligned_deg"] = self._normalize_heading_deg(yaw_now + offset)
+            else:
+                out["yaw_aligned_deg"] = None
+            return out
+
+    def set_compass_north_reference(self, *, north_heading_deg: float = 0.0) -> dict[str, Any]:
+        st = self.get_status()
+        if bool(st.get("armed")):
+            raise RuntimeError("vehicle must be disarmed before north-reference compass alignment")
+        tele = self.get_telemetry()
+        measured_yaw = self._safe_float(tele.get("yaw_deg"))
+        if measured_yaw is None:
+            raise RuntimeError("current yaw is unavailable; wait for ATTITUDE telemetry")
+
+        measured = self._normalize_heading_deg(measured_yaw)
+        north = self._normalize_heading_deg(float(north_heading_deg))
+        raw_offset = ((north - measured + 540.0) % 360.0) - 180.0
+        aligned_now = self._normalize_heading_deg(measured + raw_offset)
+        now = time.time()
+        alignment = {
+            "state": "aligned",
+            "message": "north reference captured; software heading alignment active",
+            "north_heading_deg": north,
+            "measured_yaw_deg": measured,
+            "yaw_offset_deg": raw_offset,
+            "calibrated_at_unix": now,
+        }
+        with self._lock:
+            self._status["compass_heading_alignment"] = alignment
+        return {
+            "ok": True,
+            "action": "compass_north_reference",
+            "north_heading_deg": north,
+            "measured_yaw_deg": measured,
+            "yaw_offset_deg": raw_offset,
+            "yaw_aligned_deg": aligned_now,
+            "message": alignment["message"],
+            "compass_heading_alignment": alignment,
+        }
 
     def get_track(self, limit: int = 500) -> list[dict[str, Any]]:
         n = max(1, min(int(limit), self._track.maxlen))

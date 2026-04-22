@@ -290,11 +290,17 @@ export function RealTest() {
 
   const liveCards = useMemo(() => {
     const hb = checksByKey.heartbeat_age_sec?.value;
+    const rawYawDeg = Number(telemetry.yaw_deg);
+    const alignedYawDeg = Number(telemetry.yaw_aligned_deg);
+    const rawYawLabel = Number.isFinite(rawYawDeg) ? `${rawYawDeg.toFixed(1)}°` : "--";
+    const alignedYawLabel = Number.isFinite(alignedYawDeg) ? `${alignedYawDeg.toFixed(1)}°` : "--";
     return [
       { label: "Mode", value: status.mode || "UNKNOWN", tone: "neutral" },
       { label: "Armed", value: status.armed ? "YES" : "NO", tone: status.armed ? "warn" : "good" },
       { label: "GPS", value: checksByKey.gps_ok?.ok ? "OK" : "BAD", tone: checksByKey.gps_ok?.ok ? "good" : "bad" },
       { label: "EKF", value: checksByKey.ekf_ok?.ok ? "OK" : "BAD", tone: checksByKey.ekf_ok?.ok ? "good" : "bad" },
+      { label: "Yaw Raw", value: rawYawLabel, tone: Number.isFinite(rawYawDeg) ? "neutral" : "warn" },
+      { label: "Yaw Aligned", value: alignedYawLabel, tone: Number.isFinite(alignedYawDeg) ? "good" : "warn" },
       {
         label: "Battery",
         value: fmt(batteryPercent, "%"),
@@ -309,10 +315,10 @@ export function RealTest() {
         tone: checksByKey.heartbeat_age_sec?.ok ? "good" : "bad",
       },
     ];
-  }, [batteryPercent, checksByKey, status.armed, status.mode]);
+  }, [batteryPercent, checksByKey, status.armed, status.mode, telemetry.yaw_aligned_deg, telemetry.yaw_deg]);
 
   const primaryLiveCards = useMemo(() => {
-    const priority = new Set(["Mode", "Armed", "Battery", "GPS", "EKF", "Heartbeat"]);
+    const priority = new Set(["Mode", "Armed", "Yaw Raw", "Yaw Aligned", "Battery", "GPS", "EKF", "Heartbeat"]);
     return liveCards.filter((c) => priority.has(c.label));
   }, [liveCards]);
 
@@ -380,10 +386,15 @@ export function RealTest() {
     [captureAutopilotMessage, markActionMessage],
   );
 
-  const runTinyMissionPreset = useCallback(async () => {
-    if (!window.confirm("Generate Tiny Mission preset now? (takeoff/hold/forward/hold/RTL)")) return;
+  const runTinyMissionPreset = useCallback(async (missionProfile = "out_and_back") => {
+    const isVerticalHop = String(missionProfile) === "vertical_hop";
+    if (!window.confirm(
+      isVerticalHop
+        ? "Generate Tiny Vertical Mission now? (takeoff/hold/land/disarm)"
+        : "Generate Tiny Mission preset now? (takeoff/hold/forward/hold/RTL)",
+    )) return;
     setActionBusy(true);
-    markActionMessage("warn", "Generating Tiny Mission...");
+    markActionMessage("warn", isVerticalHop ? "Generating Tiny Vertical Mission..." : "Generating Tiny Mission...");
     try {
       const missionStart = Array.isArray(planningState.missionStartLngLat) && planningState.missionStartLngLat.length >= 2
         ? [Number(planningState.missionStartLngLat[0]), Number(planningState.missionStartLngLat[1])]
@@ -391,7 +402,7 @@ export function RealTest() {
       const telemetryStart = Number.isFinite(Number(telemetry.lon)) && Number.isFinite(Number(telemetry.lat))
         ? [Number(telemetry.lon), Number(telemetry.lat)]
         : null;
-      const request = {};
+  const request = { mission_profile: String(missionProfile || "out_and_back") };
       const selectedStart = missionStart || telemetryStart;
       const startSource = missionStart ? "map start point" : (telemetryStart ? "live GPS" : "autopilot reference");
       if (selectedStart) {
@@ -410,7 +421,10 @@ export function RealTest() {
       });
       captureAutopilotMessage(payload, null);
       const waypointCount = (payload?.waypoints_lng_lat || []).length;
-      markActionMessage("good", `OK: Tiny Mission ready (${waypointCount} waypoints, start: ${startSource})`);
+      markActionMessage(
+        "good",
+        `OK: ${isVerticalHop ? "Tiny Vertical Mission" : "Tiny Mission"} ready (${waypointCount} waypoints, start: ${startSource})`,
+      );
     } catch (err) {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
@@ -418,6 +432,28 @@ export function RealTest() {
       setActionBusy(false);
     }
   }, [captureAutopilotMessage, markActionMessage, planningState.missionStartLngLat, telemetry.lat, telemetry.lon, telemetry.yaw_deg]);
+
+  const runNorthReferenceCalibration = useCallback(async () => {
+    if (!window.confirm("Point the drone exactly to TRUE NORTH (0°), keep it disarmed, then capture north reference?")) return;
+    setActionBusy(true);
+    markActionMessage("warn", "Capturing north reference calibration...");
+    try {
+      const payload = await fetchJson("/api/real/control/compass_calibrate/north_reference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ north_heading_deg: 0.0 }),
+      });
+      captureAutopilotMessage(payload, null);
+      const offset = Number(payload?.yaw_offset_deg);
+      const offsetLabel = Number.isFinite(offset) ? `${offset.toFixed(1)}°` : "--";
+      markActionMessage("good", `OK: north reference saved (yaw offset ${offsetLabel})`);
+    } catch (err) {
+      captureAutopilotMessage(null, err);
+      markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, [captureAutopilotMessage, markActionMessage]);
 
   const runSetStartFromLive = useCallback(async () => {
     const lng = Number(telemetry.lon);
@@ -695,6 +731,13 @@ export function RealTest() {
             </button>
             <button
               className="real-test-btn"
+              disabled={!status.connected || actionBusy || status.armed}
+              onClick={runNorthReferenceCalibration}
+            >
+              Set North = 0°
+            </button>
+            <button
+              className="real-test-btn"
               disabled={!status.connected || actionBusy || status.armed || compassCalActive}
               onClick={() => runControlAction("/api/real/control/compass_calibrate/start", "COMPASS CAL START", "Start compass calibration now? Keep vehicle disarmed and rotate slowly across all axes.")}
             >
@@ -810,9 +853,16 @@ export function RealTest() {
             <button
               className="real-tiny-btn"
               disabled={actionBusy || !status.connected}
-              onClick={runTinyMissionPreset}
+              onClick={() => runTinyMissionPreset("out_and_back")}
             >
               Generate Tiny Mission
+            </button>
+            <button
+              className="real-tiny-btn"
+              disabled={actionBusy || !status.connected}
+              onClick={() => runTinyMissionPreset("vertical_hop")}
+            >
+              Tiny Vertical (3m Up/Down)
             </button>
           </div>
           <div className="status-pill-grid real-pill-grid compact-pill-grid">

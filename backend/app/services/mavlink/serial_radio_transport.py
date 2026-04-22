@@ -189,6 +189,9 @@ class RealRadioService:
     def level_calibration(self) -> dict[str, Any]:
         return self._mav.level_calibration()
 
+    def set_compass_north_reference(self, *, north_heading_deg: float = 0.0) -> dict[str, Any]:
+        return self._mav.set_compass_north_reference(north_heading_deg=north_heading_deg)
+
     def set_speed(self, speed_m_s: float) -> dict[str, Any]:
         return self._mav.set_speed(speed_m_s)
 

@@ -640,6 +640,7 @@ class MissionService:
         start_lng: float,
         start_lat: float,
         heading_deg: float | None = None,
+        mission_profile: str = "out_and_back",
         takeoff_alt_m: float = 3.0,
         hover_before_s: float = 8.0,
         forward_m: float = 3.0,
@@ -648,6 +649,8 @@ class MissionService:
         start_scan: bool = False,
         fence_polygon_lng_lat: list[list[float]] | None = None,
     ) -> dict[str, Any]:
+        profile_key = str(mission_profile or "out_and_back").strip().lower()
+        vertical_only = profile_key in {"vertical", "vertical_hop", "up_down", "updown", "ascend_descend"}
         altitude = min(self.TINY_ALT_MAX_M, max(self.TINY_ALT_MIN_M, float(takeoff_alt_m)))
         hover_1 = min(self.TINY_HOVER_MAX_S, max(self.TINY_HOVER_MIN_S, float(hover_before_s)))
         hover_2 = min(self.TINY_HOVER_MAX_S, max(self.TINY_HOVER_MIN_S, float(hover_after_s)))
@@ -659,7 +662,7 @@ class MissionService:
         yaw_rad = math.radians(yaw_deg)
         effective_forward_m = float(move_forward_m)
 
-        if fence_polygon_lng_lat is not None:
+        if (not vertical_only) and fence_polygon_lng_lat is not None:
             max_forward = _max_forward_inside_fence(
                 start_lng=float(start[0]),
                 start_lat=float(start[1]),
@@ -673,47 +676,80 @@ class MissionService:
                 raise ValueError("tiny mission target is outside configured fence")
             effective_forward_m = max(0.5, max_forward)
 
-        dx = math.sin(yaw_rad) * effective_forward_m
-        dy = math.cos(yaw_rad) * effective_forward_m
-        target_lng, target_lat = _xy_to_ll(start[0], start[1], dx, dy)
-        target = [float(target_lng), float(target_lat)]
+        if vertical_only:
+            path_lng_lat = [list(start), list(start)]
+            profile = [
+                {"step": 1, "action": "takeoff", "alt_m": altitude},
+                {"step": 2, "action": "hold", "duration_s": hover_1},
+                {"step": 3, "action": "land"},
+                {"step": 4, "action": "disarm"},
+            ]
+            vertical_transit_m = max(0.0, altitude) * 2.0
+            vertical_speed_m_s = max(0.5, speed)
+            preview = MissionPreview(
+                expected_coverage_pct=0.0,
+                estimated_time_s=(vertical_transit_m / vertical_speed_m_s) + hover_1,
+                number_of_passes=1,
+                path_length_m=0.0,
+                sweep_angle_deg=yaw_deg,
+                lead_in_m=0.0,
+                return_to_home_m=0.0,
+                overlap_pct_est=0.0,
+            )
+            waypoint_meta = [
+                {"yaw_deg": yaw_deg, "kind": "start"},
+                {"yaw_deg": yaw_deg, "kind": "vertical_return"},
+            ]
+            preset_name = "tiny_vertical_mission"
+            resolved_hover_after_s = 0.0
+            resolved_forward_m = 0.0
+        else:
+            dx = math.sin(yaw_rad) * effective_forward_m
+            dy = math.cos(yaw_rad) * effective_forward_m
+            target_lng, target_lat = _xy_to_ll(start[0], start[1], dx, dy)
+            target = [float(target_lng), float(target_lat)]
 
-        path_lng_lat = [list(start), list(target), list(start)]
-        profile = [
-            {"step": 1, "action": "takeoff", "alt_m": altitude},
-            {"step": 2, "action": "hold", "duration_s": hover_1},
-            {"step": 3, "action": "move_forward", "distance_m": effective_forward_m, "speed_m_s": speed},
-            {"step": 4, "action": "hold", "duration_s": hover_2},
-            {"step": 5, "action": "rtl"},
-        ]
-        out_and_back_m = 2.0 * effective_forward_m
-        preview = MissionPreview(
-            expected_coverage_pct=0.0,
-            estimated_time_s=(out_and_back_m / speed) + hover_1 + hover_2,
-            number_of_passes=1,
-            path_length_m=out_and_back_m,
-            sweep_angle_deg=yaw_deg,
-            lead_in_m=0.0,
-            return_to_home_m=move_forward_m,
-            overlap_pct_est=0.0,
-        )
+            path_lng_lat = [list(start), list(target), list(start)]
+            profile = [
+                {"step": 1, "action": "takeoff", "alt_m": altitude},
+                {"step": 2, "action": "hold", "duration_s": hover_1},
+                {"step": 3, "action": "move_forward", "distance_m": effective_forward_m, "speed_m_s": speed},
+                {"step": 4, "action": "hold", "duration_s": hover_2},
+                {"step": 5, "action": "rtl"},
+            ]
+            out_and_back_m = 2.0 * effective_forward_m
+            preview = MissionPreview(
+                expected_coverage_pct=0.0,
+                estimated_time_s=(out_and_back_m / speed) + hover_1 + hover_2,
+                number_of_passes=1,
+                path_length_m=out_and_back_m,
+                sweep_angle_deg=yaw_deg,
+                lead_in_m=0.0,
+                return_to_home_m=move_forward_m,
+                overlap_pct_est=0.0,
+            )
+            waypoint_meta = [
+                {"yaw_deg": yaw_deg, "kind": "start"},
+                {"yaw_deg": yaw_deg, "kind": "forward"},
+                {"yaw_deg": yaw_deg, "kind": "return"},
+            ]
+            preset_name = "tiny_mission"
+            resolved_hover_after_s = hover_2
+            resolved_forward_m = effective_forward_m
 
         with self._lock:
             self._mission_type = "tiny_mission"
             self._area_polygon = []
             self._path_waypoints = path_lng_lat
-            self._waypoint_meta = [
-                {"yaw_deg": yaw_deg, "kind": "start"},
-                {"yaw_deg": yaw_deg, "kind": "forward"},
-                {"yaw_deg": yaw_deg, "kind": "return"},
-            ]
+            self._waypoint_meta = waypoint_meta
             self._orbit_meta = {
-                "preset": "tiny_mission",
+                "preset": preset_name,
                 "command_profile": profile,
+                "mission_profile": ("vertical_hop" if vertical_only else "out_and_back"),
                 "takeoff_alt_m": altitude,
                 "hover_before_s": hover_1,
-                "forward_m": effective_forward_m,
-                "hover_after_s": hover_2,
+                "forward_m": resolved_forward_m,
+                "hover_after_s": resolved_hover_after_s,
                 "speed_m_s": speed,
                 "heading_deg": yaw_deg,
             }
