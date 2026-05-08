@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import deque
 import logging
 import math
 import ssl
@@ -172,6 +173,23 @@ def create_app() -> FastAPI:
     runs = RunManager()
     cov_stop_evt = threading.Event()
     cov_thread: threading.Thread | None = None
+    real_command_debug_lock = threading.Lock()
+    real_command_debug_log: deque[dict[str, object]] = deque(maxlen=40)
+    real_last_command_debug: dict[str, object] = {
+        "action": None,
+        "endpoint": None,
+        "sent_at_unix": None,
+        "ok": None,
+        "result": "idle",
+        "error": "",
+        "http_status": None,
+        "command_ack": None,
+        "last_status_text": "",
+        "recent_status_text": [],
+        "blocking_reasons": [],
+        "readiness_snapshot": None,
+        "mission_state": {},
+    }
 
     def _snapshot() -> dict[str, object]:
         return {
@@ -538,14 +556,247 @@ def create_app() -> FastAPI:
         blockers = [str(checks.get(key, {}).get("message") or key) for key in required if not bool(checks.get(key, {}).get("ok"))]
         if not blockers:
             return snap
+        radio_state = real_radio.status()
+        mav_status = radio_state.get("mav_status") if isinstance(radio_state.get("mav_status"), dict) else {}
         raise HTTPException(
             status_code=409,
             detail={
-                "error": f"autonomy_blocked:{action}",
+                "ok": False,
+                "action": action,
+                "error": "readiness_blocked",
                 "blocking_reasons": blockers,
                 "readiness_snapshot": snap,
+                "last_status_text": str(mav_status.get("last_status_text") or ""),
+                "recent_status_text": list(mav_status.get("recent_status_text") or []),
             },
         )
+
+    def _extract_blocking_reasons(detail: object) -> list[str]:
+        if isinstance(detail, dict):
+            reasons = detail.get("blocking_reasons")
+            if isinstance(reasons, list):
+                return [str(item) for item in reasons if str(item).strip()]
+        return []
+
+    def _latest_real_command_ack(*, after_unix: float | None = None) -> dict[str, object] | None:
+        items = real_radio.get_command_ack_log(limit=40)
+        if not items:
+            return None
+        if after_unix is None:
+            return dict(items[-1])
+        chosen = None
+        for item in items:
+            try:
+                item_t = float(item.get("t_unix"))
+            except Exception:
+                continue
+            if item_t >= float(after_unix):
+                chosen = dict(item)
+        return chosen
+
+    def _command_result_from_ack(ack: dict[str, object] | None) -> str:
+        if not isinstance(ack, dict):
+            return "unknown"
+        label = str(ack.get("result_label") or "").lower()
+        if "accepted" in label or "in_progress" in label:
+            return "accepted"
+        if label:
+            return "denied"
+        return "unknown"
+
+    def _record_real_command_debug(
+        *,
+        action: str,
+        endpoint: str,
+        sent_at_unix: float,
+        ok: bool,
+        result: str,
+        payload: dict[str, object] | None = None,
+        error: str = "",
+        http_status: int | None = None,
+        blocking_reasons: list[str] | None = None,
+        readiness_snapshot: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        radio_state = real_radio.status()
+        mav_status = radio_state.get("mav_status") if isinstance(radio_state.get("mav_status"), dict) else {}
+        mission_state = real_executor.get_state()
+        ack = _latest_real_command_ack(after_unix=sent_at_unix)
+        entry = {
+            "action": action,
+            "endpoint": endpoint,
+            "sent_at_unix": float(sent_at_unix),
+            "ok": bool(ok),
+            "result": str(result),
+            "error": str(error or ""),
+            "http_status": http_status,
+            "command_ack": ack,
+            "last_status_text": str(
+                (payload or {}).get("last_status_text")
+                or mav_status.get("last_status_text")
+                or ""
+            ),
+            "recent_status_text": list(mav_status.get("recent_status_text") or []),
+            "blocking_reasons": list(blocking_reasons or []),
+            "readiness_snapshot": readiness_snapshot,
+            "mission_state": mission_state,
+        }
+        with real_command_debug_lock:
+            real_last_command_debug.clear()
+            real_last_command_debug.update(entry)
+            real_command_debug_log.append(dict(entry))
+        return entry
+
+    def _run_real_action_with_debug(
+        *,
+        action: str,
+        endpoint: str,
+        fn,
+        readiness_action: str | None = None,
+    ) -> dict[str, object]:
+        sent_at_unix = time.time()
+        readiness_snapshot = None
+        if readiness_action:
+            try:
+                readiness_snapshot = _require_real_autonomy_ready(readiness_action)
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {"error": str(exc.detail)}
+                blocking_reasons = _extract_blocking_reasons(detail)
+                result = "blocked" if blocking_reasons else "failed"
+                entry = _record_real_command_debug(
+                    action=action,
+                    endpoint=endpoint,
+                    sent_at_unix=sent_at_unix,
+                    ok=False,
+                    result=result,
+                    error=str(detail.get("error") or "readiness_blocked"),
+                    http_status=409,
+                    blocking_reasons=blocking_reasons,
+                    readiness_snapshot=(detail.get("readiness_snapshot") if isinstance(detail.get("readiness_snapshot"), dict) else None),
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "ok": False,
+                        "action": action,
+                        "error": "readiness_blocked",
+                        "blocking_reasons": entry.get("blocking_reasons") or blocking_reasons,
+                        "last_status_text": entry.get("last_status_text") or str(detail.get("last_status_text") or ""),
+                        "recent_status_text": entry.get("recent_status_text") or list(detail.get("recent_status_text") or []),
+                        "command_ack": entry.get("command_ack"),
+                        "readiness_snapshot": detail.get("readiness_snapshot") or readiness_snapshot,
+                    },
+                )
+        try:
+            out = fn()
+            payload = dict(out) if isinstance(out, dict) else {}
+            radio_state = real_radio.status()
+            mav_status = radio_state.get("mav_status") if isinstance(radio_state.get("mav_status"), dict) else {}
+            payload.setdefault("ok", True)
+            payload.setdefault("action", action)
+            payload.setdefault("armed", bool(mav_status.get("armed")))
+            payload.setdefault("resulting_mode", str(mav_status.get("mode") or "UNKNOWN"))
+            payload.setdefault("last_status_text", str(mav_status.get("last_status_text") or ""))
+            payload.setdefault("recent_status_text", list(mav_status.get("recent_status_text") or []))
+            result_value = _command_result_from_ack(_latest_real_command_ack(after_unix=sent_at_unix))
+            if result_value == "unknown":
+                result_value = "accepted"
+            entry = _record_real_command_debug(
+                action=action,
+                endpoint=endpoint,
+                sent_at_unix=sent_at_unix,
+                ok=True,
+                result=result_value,
+                payload=payload,
+                readiness_snapshot=readiness_snapshot,
+            )
+            payload["command_ack"] = entry.get("command_ack")
+            payload["mission_state"] = entry.get("mission_state")
+            if readiness_snapshot is not None:
+                payload["readiness_snapshot"] = readiness_snapshot
+            return payload
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            err_msg = str(exc)
+            entry = _record_real_command_debug(
+                action=action,
+                endpoint=endpoint,
+                sent_at_unix=sent_at_unix,
+                ok=False,
+                result="blocked",
+                error=err_msg,
+                http_status=409,
+                blocking_reasons=[err_msg],
+                readiness_snapshot=readiness_snapshot,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "ok": False,
+                    "action": action,
+                    "error": "readiness_blocked",
+                    "blocking_reasons": [err_msg],
+                    "message": err_msg,
+                    "last_status_text": entry.get("last_status_text"),
+                    "recent_status_text": entry.get("recent_status_text"),
+                    "command_ack": entry.get("command_ack"),
+                    "readiness_snapshot": readiness_snapshot,
+                },
+            )
+        except RuntimeError as exc:
+            err_msg = str(exc)
+            lowered = err_msg.lower()
+            if "timed out" in lowered or "timeout" in lowered:
+                result = "timeout"
+            else:
+                result = "failed"
+            entry = _record_real_command_debug(
+                action=action,
+                endpoint=endpoint,
+                sent_at_unix=sent_at_unix,
+                ok=False,
+                result=result,
+                error=err_msg,
+                http_status=409,
+                readiness_snapshot=readiness_snapshot,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "ok": False,
+                    "action": action,
+                    "error": "autopilot_rejected",
+                    "message": err_msg,
+                    "last_status_text": entry.get("last_status_text"),
+                    "recent_status_text": entry.get("recent_status_text"),
+                    "command_ack": entry.get("command_ack"),
+                    "readiness_snapshot": readiness_snapshot,
+                },
+            )
+        except Exception as exc:
+            entry = _record_real_command_debug(
+                action=action,
+                endpoint=endpoint,
+                sent_at_unix=sent_at_unix,
+                ok=False,
+                result="failed",
+                error=str(exc),
+                http_status=500,
+                readiness_snapshot=readiness_snapshot,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "ok": False,
+                    "action": action,
+                    "error": "backend_error",
+                    "message": str(exc),
+                    "last_status_text": entry.get("last_status_text"),
+                    "recent_status_text": entry.get("recent_status_text"),
+                    "command_ack": entry.get("command_ack"),
+                    "readiness_snapshot": readiness_snapshot,
+                },
+            )
 
     @app.post("/api/connection/connect")
     def connection_connect() -> dict[str, object]:
@@ -990,6 +1241,34 @@ def create_app() -> FastAPI:
         return mission_clear()
 
     # --- Real mission namespace (field/operator surface) ---
+    @app.get("/api/real/map_state")
+    def real_map_state() -> dict[str, object]:
+        return map_state()
+
+    @app.post("/api/real/mission/area")
+    def real_mission_area(req: MissionAreaRequest) -> dict[str, object]:
+        return mission_area(req)
+
+    @app.post("/api/real/mission/orbit_center")
+    def real_mission_orbit_center(req: MissionStartRequest) -> dict[str, object]:
+        return mission_orbit_center(req)
+
+    @app.post("/api/real/mission/start_position")
+    def real_mission_start_position(req: MissionStartRequest) -> dict[str, object]:
+        return mission_start_position(req)
+
+    @app.post("/api/real/mission/landing_position")
+    def real_mission_landing_position(req: MissionStartRequest) -> dict[str, object]:
+        return mission_landing_position(req)
+
+    @app.delete("/api/real/mission/landing_position")
+    def real_mission_landing_position_clear() -> dict[str, object]:
+        return mission_landing_position_clear()
+
+    @app.post("/api/real/mission/clear")
+    def real_mission_clear() -> dict[str, object]:
+        return mission_clear()
+
     @app.get("/api/real/connection/ports")
     def real_connection_ports() -> dict[str, object]:
         return real_radio.list_serial_ports()
@@ -1022,120 +1301,160 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail=out)
         return out
 
-    def _run_real_control(fn, *, action: str | None = None):
-        def _real_status_snapshot() -> dict[str, object]:
+    @app.get("/api/real/debug/last_command")
+    def real_debug_last_command() -> dict[str, object]:
+        with real_command_debug_lock:
+            out = dict(real_last_command_debug)
+        if not out.get("last_status_text"):
             status_payload = real_radio.status()
             mav_status = status_payload.get("mav_status") if isinstance(status_payload.get("mav_status"), dict) else {}
-            mode_now = str(mav_status.get("mode") or "UNKNOWN")
-            return {
-                "armed": bool(mav_status.get("armed")),
-                "resulting_mode": mode_now,
-                "last_status_text": str(mav_status.get("last_status_text") or ""),
-                "recent_status_text": list(mav_status.get("recent_status_text") or []),
-            }
+            out["last_status_text"] = str(mav_status.get("last_status_text") or "")
+            out["recent_status_text"] = list(mav_status.get("recent_status_text") or [])
+        if not out.get("command_ack"):
+            out["command_ack"] = _latest_real_command_ack()
+        if not out.get("mission_state"):
+            out["mission_state"] = real_executor.get_state()
+        return out
 
-        try:
-            out = fn()
-            payload = dict(out) if isinstance(out, dict) else {}
-            snap = _real_status_snapshot()
-            if action and "action" not in payload:
-                payload["action"] = action
-            payload.setdefault("ok", True)
-            payload.setdefault("armed", snap["armed"])
-            payload.setdefault("resulting_mode", snap["resulting_mode"])
-            payload.setdefault("last_status_text", snap["last_status_text"])
-            payload.setdefault("recent_status_text", snap["recent_status_text"])
-            return payload
-        except RuntimeError as exc:
-            snap = _real_status_snapshot()
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "ok": False,
-                    "action": action or "real_control",
-                    "error": str(exc),
-                    "armed": snap["armed"],
-                    "resulting_mode": snap["resulting_mode"],
-                    "last_status_text": snap["last_status_text"],
-                    "recent_status_text": snap["recent_status_text"],
-                },
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+    @app.get("/api/real/debug/command_ack_log")
+    def real_debug_command_ack_log(limit: int = 40) -> dict[str, object]:
+        n = max(1, min(int(limit), 120))
+        status_payload = real_radio.status()
+        mav_status = status_payload.get("mav_status") if isinstance(status_payload.get("mav_status"), dict) else {}
+        with real_command_debug_lock:
+            command_log = list(real_command_debug_log)[-n:]
+        return {
+            "count": len(command_log),
+            "command_log": command_log,
+            "command_ack_log": real_radio.get_command_ack_log(limit=n),
+            "last_status_text": str(mav_status.get("last_status_text") or ""),
+            "recent_status_text": list(mav_status.get("recent_status_text") or []),
+        }
 
     @app.post("/api/real/control/arm")
     def real_control_arm() -> dict[str, object]:
-        out = _run_real_control(real_radio.arm, action="arm")
+        out = _run_real_action_with_debug(
+            action="arm",
+            endpoint="/api/real/control/arm",
+            fn=real_radio.arm,
+        )
         runs.log("REAL_ARM", out)
         return out
 
     @app.post("/api/real/control/disarm")
     def real_control_disarm() -> dict[str, object]:
-        out = _run_real_control(real_radio.disarm, action="disarm")
+        out = _run_real_action_with_debug(
+            action="disarm",
+            endpoint="/api/real/control/disarm",
+            fn=real_radio.disarm,
+        )
         runs.log("REAL_DISARM", out)
         return out
 
     @app.post("/api/real/control/takeoff")
     def real_control_takeoff(req: TakeoffRequest) -> dict[str, object]:
-        out = _run_real_control(lambda: real_radio.takeoff(req.alt_m), action="takeoff")
+        out = _run_real_action_with_debug(
+            action="takeoff",
+            endpoint="/api/real/control/takeoff",
+            fn=lambda: real_radio.takeoff(req.alt_m),
+        )
+        out["alt_m"] = float(req.alt_m) if req.alt_m is not None else out.get("alt_m")
         runs.log("REAL_TAKEOFF", {"alt_m": req.alt_m})
         return out
 
     @app.post("/api/real/control/hold")
     def real_control_hold() -> dict[str, object]:
-        out = _run_real_control(lambda: real_radio.set_mode("LOITER"), action="hold")
+        out = _run_real_action_with_debug(
+            action="hold",
+            endpoint="/api/real/control/hold",
+            fn=lambda: real_radio.set_mode("LOITER"),
+        )
         payload = {**out, "action": "hold", "target_mode": "LOITER"}
         runs.log("REAL_HOLD", payload)
         return payload
 
     @app.post("/api/real/control/rtl")
     def real_control_rtl() -> dict[str, object]:
-        out = _run_real_control(real_radio.rtl, action="rtl")
+        out = _run_real_action_with_debug(
+            action="rtl",
+            endpoint="/api/real/control/rtl",
+            fn=real_radio.rtl,
+        )
         runs.log("REAL_RTL", out)
         return out
 
     @app.post("/api/real/control/land")
     def real_control_land() -> dict[str, object]:
-        out = _run_real_control(real_radio.land, action="land")
+        out = _run_real_action_with_debug(
+            action="land",
+            endpoint="/api/real/control/land",
+            fn=real_radio.land,
+        )
         runs.log("REAL_LAND", out)
         return out
 
     @app.post("/api/real/control/land_here")
     def real_control_land_here() -> dict[str, object]:
         # LAND mode commands immediate landing at current position.
-        out = _run_real_control(real_radio.land, action="land_here")
+        out = _run_real_action_with_debug(
+            action="land_here",
+            endpoint="/api/real/control/land_here",
+            fn=real_radio.land,
+        )
         runs.log("REAL_LAND_HERE", out)
         return out
 
     @app.post("/api/real/control/set_mode")
     def real_control_set_mode(req: ModeRequest) -> dict[str, object]:
-        out = _run_real_control(lambda: real_radio.set_mode(req.mode), action="set_mode")
+        out = _run_real_action_with_debug(
+            action="set_mode",
+            endpoint="/api/real/control/set_mode",
+            fn=lambda: real_radio.set_mode(req.mode),
+        )
+        out["mode"] = str(req.mode or "")
         runs.log("REAL_SET_MODE", {"mode": req.mode})
         return out
 
+    @app.post("/api/real/control/mode")
+    def real_control_mode_alias(req: ModeRequest) -> dict[str, object]:
+        return real_control_set_mode(req)
+
     @app.post("/api/real/control/compass_calibrate/start")
     def real_control_compass_calibrate_start() -> dict[str, object]:
-        out = _run_real_control(real_radio.start_compass_calibration, action="compass_calibrate_start")
+        out = _run_real_action_with_debug(
+            action="compass_calibrate_start",
+            endpoint="/api/real/control/compass_calibrate/start",
+            fn=real_radio.start_compass_calibration,
+        )
         runs.log("REAL_COMPASS_CALIBRATE_START", out)
         return out
 
     @app.post("/api/real/control/compass_calibrate/cancel")
     def real_control_compass_calibrate_cancel() -> dict[str, object]:
-        out = _run_real_control(real_radio.cancel_compass_calibration, action="compass_calibrate_cancel")
+        out = _run_real_action_with_debug(
+            action="compass_calibrate_cancel",
+            endpoint="/api/real/control/compass_calibrate/cancel",
+            fn=real_radio.cancel_compass_calibration,
+        )
         runs.log("REAL_COMPASS_CALIBRATE_CANCEL", out)
         return out
 
     @app.post("/api/real/control/level_calibrate")
     def real_control_level_calibrate() -> dict[str, object]:
-        out = _run_real_control(real_radio.level_calibration, action="level_calibrate")
+        out = _run_real_action_with_debug(
+            action="level_calibrate",
+            endpoint="/api/real/control/level_calibrate",
+            fn=real_radio.level_calibration,
+        )
         runs.log("REAL_LEVEL_CALIBRATE", out)
         return out
 
     @app.post("/api/real/control/compass_calibrate/north_reference")
     def real_control_compass_calibrate_north_reference(req: CompassNorthReferenceRequest) -> dict[str, object]:
-        out = _run_real_control(
-            lambda: real_radio.set_compass_north_reference(north_heading_deg=req.north_heading_deg),
+        out = _run_real_action_with_debug(
             action="compass_calibrate_north_reference",
+            endpoint="/api/real/control/compass_calibrate/north_reference",
+            fn=lambda: real_radio.set_compass_north_reference(north_heading_deg=req.north_heading_deg),
         )
         runs.log("REAL_COMPASS_CALIBRATE_NORTH_REFERENCE", out)
         return out
@@ -1245,24 +1564,30 @@ def create_app() -> FastAPI:
 
     @app.post("/api/real/mission/start")
     def real_mission_start(req: SitlStartRequest) -> dict[str, object]:
-        try:
-            _require_real_autonomy_ready("real_mission_start")
+        def _start_scan() -> dict[str, object]:
             _require_mission_payload_inside_fence(mission.get_path(), context="real mission start")
-            out = real_executor.start_scan(alt_m=req.alt_m, accept_radius_m=req.accept_radius_m)
-            mav_status = real_radio.status().get("mav_status") or {}
-            out = {**out, "last_status_text": str(mav_status.get("last_status_text") or "")}
-            runs.log("REAL_MISSION_START", {"alt_m": req.alt_m, "accept_radius_m": req.accept_radius_m})
-            return out
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc))
+            return real_executor.start_scan(alt_m=req.alt_m, accept_radius_m=req.accept_radius_m)
+
+        out = _run_real_action_with_debug(
+            action="mission_start",
+            endpoint="/api/real/mission/start",
+            fn=_start_scan,
+            readiness_action="real_mission_start",
+        )
+        out["alt_m"] = float(req.alt_m)
+        out["accept_radius_m"] = float(req.accept_radius_m)
+        out["mission_state"] = real_executor.get_state()
+        runs.log("REAL_MISSION_START", {"alt_m": req.alt_m, "accept_radius_m": req.accept_radius_m, "ok": out.get("ok")})
+        return out
 
     @app.post("/api/real/mission/stop")
     def real_mission_stop() -> dict[str, object]:
-        out = real_executor.stop_scan()
-        mav_status = real_radio.status().get("mav_status") or {}
-        out = {**out, "last_status_text": str(mav_status.get("last_status_text") or "")}
+        out = _run_real_action_with_debug(
+            action="mission_stop",
+            endpoint="/api/real/mission/stop",
+            fn=real_executor.stop_scan,
+        )
+        out["mission_state"] = real_executor.get_state()
         runs.log("REAL_MISSION_STOP", out)
         return out
 

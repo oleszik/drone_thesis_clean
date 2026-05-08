@@ -312,15 +312,15 @@ export function MapPanel({
   const isSim = variant === "sim";
   const isReal = variant === "real";
   const readinessPath = isReal ? "/api/real/readiness" : "/api/sim/readiness";
-  const mapStatePath = isReal ? "/api/map_state" : "/api/sim/map_state";
+  const mapStatePath = isReal ? "/api/real/map_state" : "/api/sim/map_state";
   const missionPathPath = isReal ? "/api/real/mission/path" : "/api/sim/mission/path";
-  const missionAreaPath = isReal ? "/api/mission/area" : "/api/sim/mission/area";
-  const missionOrbitCenterPath = isReal ? "/api/mission/orbit_center" : "/api/sim/mission/orbit_center";
-  const missionStartPath = isReal ? "/api/mission/start_position" : "/api/sim/mission/start_position";
-  const missionLandingPath = isReal ? "/api/mission/landing_position" : "/api/sim/mission/landing_position";
+  const missionAreaPath = isReal ? "/api/real/mission/area" : "/api/sim/mission/area";
+  const missionOrbitCenterPath = isReal ? "/api/real/mission/orbit_center" : "/api/sim/mission/orbit_center";
+  const missionStartPath = isReal ? "/api/real/mission/start_position" : "/api/sim/mission/start_position";
+  const missionLandingPath = isReal ? "/api/real/mission/landing_position" : "/api/sim/mission/landing_position";
   const missionGenerateOrbitPath = isReal ? "/api/real/mission/generate_orbit_scan" : "/api/sim/mission/generate_orbit_scan";
   const missionGenerateScanPath = isReal ? "/api/real/mission/generate_scan" : "/api/sim/mission/generate_scan";
-  const missionClearPath = isReal ? "/api/mission/clear" : "/api/sim/mission/clear";
+  const missionClearPath = isReal ? "/api/real/mission/clear" : "/api/sim/mission/clear";
 
   const [mapState, setMapState] = useState(null);
   const [track, setTrack] = useState([]);

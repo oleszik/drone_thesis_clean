@@ -162,6 +162,12 @@ class RealRadioService:
     def get_track(self, limit: int = 500) -> list[dict[str, Any]]:
         return self._mav.get_track(limit=limit)
 
+    def get_command_ack_log(self, limit: int = 40) -> list[dict[str, Any]]:
+        return self._mav.get_command_ack_log(limit=limit)
+
+    def get_status_text_log(self, limit: int = 12) -> list[dict[str, Any]]:
+        return self._mav.get_status_text_log(limit=limit)
+
     def arm(self) -> dict[str, Any]:
         return self._mav.arm()
 

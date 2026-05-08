@@ -346,6 +346,20 @@ class MavlinkService:
                 out["yaw_aligned_deg"] = None
             return out
 
+    def get_command_ack_log(self, limit: int = 40) -> list[dict[str, Any]]:
+        n = max(1, min(int(limit), self._command_ack_log.maxlen))
+        with self._lock:
+            if n >= len(self._command_ack_log):
+                return [dict(item) for item in self._command_ack_log]
+            return [dict(item) for item in list(self._command_ack_log)[-n:]]
+
+    def get_status_text_log(self, limit: int = 12) -> list[dict[str, Any]]:
+        n = max(1, min(int(limit), self._status_text_log.maxlen))
+        with self._lock:
+            if n >= len(self._status_text_log):
+                return [dict(item) for item in self._status_text_log]
+            return [dict(item) for item in list(self._status_text_log)[-n:]]
+
     def set_compass_north_reference(self, *, north_heading_deg: float = 0.0) -> dict[str, Any]:
         st = self.get_status()
         if bool(st.get("armed")):

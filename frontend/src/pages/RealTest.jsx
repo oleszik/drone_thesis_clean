@@ -1,33 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveStream } from "../hooks/useLiveStream";
 import { MapPanel } from "../MapPanel";
-
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || "http://127.0.0.1:8000";
-
-class ApiError extends Error {
-  constructor(message, detail, status) {
-    super(message);
-    this.name = "ApiError";
-    this.detail = detail;
-    this.status = status;
-  }
-}
-
-async function fetchJson(path, init) {
-  const resp = await fetch(`${BACKEND_BASE}${path}`, init);
-  const payload = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    const rawDetail = payload?.detail;
-    let detail = rawDetail ? String(rawDetail) : `HTTP ${resp.status}`;
-    if (rawDetail && typeof rawDetail === "object") {
-      const reasons = Array.isArray(rawDetail.blocking_reasons) ? rawDetail.blocking_reasons : [];
-      const msg = rawDetail.error ? String(rawDetail.error) : `HTTP ${resp.status}`;
-      detail = reasons.length ? `${msg} (${reasons.join("; ")})` : msg;
-    }
-    throw new ApiError(detail, rawDetail, resp.status);
-  }
-  return payload;
-}
+import {
+  armRealDrone,
+  cancelCompassCalibration,
+  connectRealRadio,
+  disarmRealDrone,
+  disconnectRealRadio,
+  generateRealTinyMission,
+  getRealLastCommandDebug,
+  getRealMissionState,
+  getRealRadioPorts,
+  getRealRadioStatus,
+  getRealReadiness,
+  holdRealDrone,
+  landHereRealDrone,
+  landRealDrone,
+  levelCalibrate,
+  rtlRealDrone,
+  saveNorthReference,
+  setRealMissionStartPosition,
+  startCompassCalibration,
+  startRealMission,
+  stopRealMission,
+  testRealHeartbeat,
+} from "../api/realFlightApi";
 
 function getErrorMessage(err) {
   if (err instanceof Error && err.message) return err.message;
@@ -64,6 +61,12 @@ function toneFromMissionState(state) {
 function fmt(v, suffix = "") {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return "--";
   return `${Number(v).toFixed(1)}${suffix}`;
+}
+
+function fmtUnixTs(unixTs) {
+  const n = Number(unixTs);
+  if (!Number.isFinite(n) || n <= 0) return "--";
+  return new Date(n * 1000).toLocaleString();
 }
 
 function isPreferredSerialPort(port) {
@@ -104,6 +107,18 @@ export function RealTest() {
     waypoint_count: 0,
     last_error: "",
     last_status_text: "",
+  });
+  const [lastCommandDebug, setLastCommandDebug] = useState({
+    action: null,
+    endpoint: null,
+    sent_at_unix: null,
+    ok: null,
+    result: "idle",
+    error: "",
+    command_ack: null,
+    last_status_text: "",
+    blocking_reasons: [],
+    mission_state: {},
   });
   const [lastFcMessage, setLastFcMessage] = useState("");
   const [actionMsg, setActionMsg] = useState("");
@@ -164,7 +179,7 @@ export function RealTest() {
 
     async function poll() {
       try {
-        const payload = await fetchJson("/api/real/readiness");
+        const payload = await getRealReadiness();
         if (!cancelled) {
           setReadiness(payload);
           if (payload?.last_status_text) {
@@ -193,7 +208,7 @@ export function RealTest() {
 
     async function pollMissionState() {
       try {
-        const payload = await fetchJson("/api/real/mission/state");
+        const payload = await getRealMissionState();
         if (!cancelled) {
           setMissionState((prev) => ({ ...prev, ...(payload || {}) }));
           if (payload?.last_status_text) {
@@ -220,8 +235,8 @@ export function RealTest() {
     async function pollRadio() {
       try {
         const [portsResp, statusResp] = await Promise.all([
-          fetchJson("/api/real/connection/ports"),
-          fetchJson("/api/real/connection/status"),
+          getRealRadioPorts(),
+          getRealRadioStatus(),
         ]);
         if (cancelled) return;
         const ports = Array.isArray(portsResp?.ports) ? portsResp.ports : [];
@@ -252,6 +267,30 @@ export function RealTest() {
       if (timer) window.clearTimeout(timer);
     };
   }, [serialPort]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    async function pollLastCommand() {
+      try {
+        const payload = await getRealLastCommandDebug();
+        if (!cancelled) {
+          setLastCommandDebug((prev) => ({ ...prev, ...(payload || {}) }));
+        }
+      } catch {
+        // Keep latest debug payload.
+      }
+      const nextMs = radioStatus.connected ? 1500 : 4000;
+      if (!cancelled) timer = window.setTimeout(pollLastCommand, nextMs);
+    }
+
+    pollLastCommand();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [radioStatus.connected]);
 
   const missionTone = toneFromMissionState(missionState.state);
 
@@ -349,6 +388,16 @@ export function RealTest() {
       : compassCalActive
         ? "warn"
         : "neutral";
+  const commandResult = String(lastCommandDebug?.result || "idle").toLowerCase();
+  const commandTone = commandResult === "accepted"
+    ? "good"
+    : (commandResult === "blocked" || commandResult === "denied" || commandResult === "failed" || commandResult === "timeout")
+      ? "bad"
+      : "neutral";
+  const commandBlockingReasons = Array.isArray(lastCommandDebug?.blocking_reasons)
+    ? lastCommandDebug.blocking_reasons.map((x) => String(x || "")).filter(Boolean)
+    : [];
+  const commandAckLabel = String(lastCommandDebug?.command_ack?.result_label || "--").toUpperCase();
 
   const markActionMessage = useCallback((tone, text) => {
     setActionTone(tone);
@@ -362,16 +411,25 @@ export function RealTest() {
     if (chosen) setLastFcMessage(chosen);
   }, []);
 
+  const refreshLastCommandDebug = useCallback(async () => {
+    try {
+      const payload = await getRealLastCommandDebug();
+      setLastCommandDebug((prev) => ({ ...prev, ...(payload || {}) }));
+      if (payload?.last_status_text) {
+        setLastFcMessage(String(payload.last_status_text));
+      }
+    } catch {
+      // Keep last known command state when debug polling is temporarily unavailable.
+    }
+  }, []);
+
   const runControlAction = useCallback(
-    async (path, label, confirmText = "") => {
+    async (runAction, label, confirmText = "") => {
       if (confirmText && !window.confirm(confirmText)) return;
       setActionBusy(true);
       markActionMessage("warn", `Sending ${label}...`);
       try {
-        const payload = await fetchJson(path, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
+        const payload = await runAction();
         captureAutopilotMessage(payload, null);
         const modeHint = payload?.resulting_mode ? ` (mode: ${payload.resulting_mode})` : "";
         const armedHint = typeof payload?.armed === "boolean" ? ` (armed: ${payload.armed ? "YES" : "NO"})` : "";
@@ -380,10 +438,11 @@ export function RealTest() {
         captureAutopilotMessage(null, err);
         markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
       } finally {
+        await refreshLastCommandDebug();
         setActionBusy(false);
       }
     },
-    [captureAutopilotMessage, markActionMessage],
+    [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug],
   );
 
   const runTinyMissionPreset = useCallback(async (missionProfile = "out_and_back") => {
@@ -414,11 +473,7 @@ export function RealTest() {
         request.heading_deg = headingDeg;
       }
 
-      const payload = await fetchJson("/api/real/mission/generate_tiny", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-      });
+      const payload = await generateRealTinyMission(request);
       captureAutopilotMessage(payload, null);
       const waypointCount = (payload?.waypoints_lng_lat || []).length;
       markActionMessage(
@@ -429,20 +484,17 @@ export function RealTest() {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage, planningState.missionStartLngLat, telemetry.lat, telemetry.lon, telemetry.yaw_deg]);
+  }, [captureAutopilotMessage, markActionMessage, planningState.missionStartLngLat, refreshLastCommandDebug, telemetry.lat, telemetry.lon, telemetry.yaw_deg]);
 
   const runNorthReferenceCalibration = useCallback(async () => {
     if (!window.confirm("Point the drone exactly to TRUE NORTH (0°), keep it disarmed, then capture north reference?")) return;
     setActionBusy(true);
     markActionMessage("warn", "Capturing north reference calibration...");
     try {
-      const payload = await fetchJson("/api/real/control/compass_calibrate/north_reference", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ north_heading_deg: 0.0 }),
-      });
+      const payload = await saveNorthReference(0.0);
       captureAutopilotMessage(payload, null);
       const offset = Number(payload?.yaw_offset_deg);
       const offsetLabel = Number.isFinite(offset) ? `${offset.toFixed(1)}°` : "--";
@@ -451,9 +503,10 @@ export function RealTest() {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage]);
+  }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug]);
 
   const runSetStartFromLive = useCallback(async () => {
     const lng = Number(telemetry.lon);
@@ -465,11 +518,7 @@ export function RealTest() {
     setActionBusy(true);
     markActionMessage("warn", "Saving mission start point from live GPS...");
     try {
-      const payload = await fetchJson("/api/mission/start_position", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lng, lat }),
-      });
+      const payload = await setRealMissionStartPosition(lng, lat);
       captureAutopilotMessage(payload, null);
       setPlanningState((prev) => ({
         ...prev,
@@ -481,27 +530,24 @@ export function RealTest() {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage, telemetry.lat, telemetry.lon]);
+  }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug, telemetry.lat, telemetry.lon]);
 
   const runStartMission = useCallback(async () => {
     if (!window.confirm("Start the generated mission on the real drone now?")) return;
     setActionBusy(true);
     markActionMessage("warn", "Starting real mission...");
     try {
-      const payload = await fetchJson("/api/real/mission/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alt_m: Number(planningState.startAltitudeM || 10),
-          accept_radius_m: 3.0,
-        }),
+      const payload = await startRealMission({
+        alt_m: Number(planningState.startAltitudeM || 10),
+        accept_radius_m: 3.0,
       });
       captureAutopilotMessage(payload, null);
       setMissionState((prev) => ({ ...prev, ...(payload || {}) }));
 
-      const latestState = await fetchJson("/api/real/mission/state");
+      const latestState = await getRealMissionState();
       setMissionState((prev) => ({ ...prev, ...(latestState || {}) }));
       captureAutopilotMessage(latestState, null);
 
@@ -517,19 +563,17 @@ export function RealTest() {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage, planningState.startAltitudeM]);
+  }, [captureAutopilotMessage, markActionMessage, planningState.startAltitudeM, refreshLastCommandDebug]);
 
   const runStopMission = useCallback(async () => {
     if (!window.confirm("Stop the active real mission and command RTL?")) return;
     setActionBusy(true);
     markActionMessage("warn", "Stopping real mission...");
     try {
-      const payload = await fetchJson("/api/real/mission/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const payload = await stopRealMission();
       captureAutopilotMessage(payload, null);
       setMissionState((prev) => ({ ...prev, ...(payload || {}) }));
       markActionMessage("good", `Mission stop requested (state=${String(payload?.state || "STOPPED").toUpperCase()})`);
@@ -537,73 +581,67 @@ export function RealTest() {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage]);
+  }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug]);
 
   const connectRadio = useCallback(async () => {
     setActionBusy(true);
     markActionMessage("warn", "Connecting radio...");
     try {
-      const payload = await fetchJson("/api/real/connection/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serial_port: serialPort, serial_baud: Number(serialBaud) }),
-      });
+      const payload = await connectRealRadio(serialPort, Number(serialBaud));
       captureAutopilotMessage(payload, null);
       markActionMessage("good", `OK: radio connect (${payload?.serial_port || serialPort})`);
-      const statusPayload = await fetchJson("/api/real/connection/status");
+      const statusPayload = await getRealRadioStatus();
       setRadioStatus((prev) => ({ ...prev, ...(statusPayload || {}) }));
       captureAutopilotMessage(statusPayload, null);
     } catch (err) {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage, serialBaud, serialPort]);
+  }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug, serialBaud, serialPort]);
 
   const disconnectRadio = useCallback(async () => {
     setActionBusy(true);
     markActionMessage("warn", "Disconnecting radio...");
     try {
-      const payload = await fetchJson("/api/real/connection/disconnect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const payload = await disconnectRealRadio();
       captureAutopilotMessage(payload, null);
       markActionMessage("good", "OK: radio disconnected");
-      const statusPayload = await fetchJson("/api/real/connection/status");
+      const statusPayload = await getRealRadioStatus();
       setRadioStatus((prev) => ({ ...prev, ...(statusPayload || {}) }));
       captureAutopilotMessage(statusPayload, null);
     } catch (err) {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage]);
+  }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug]);
 
   const testHeartbeat = useCallback(async () => {
     setActionBusy(true);
     markActionMessage("warn", "Heartbeat test...");
     try {
-      const payload = await fetchJson("/api/real/connection/heartbeat_test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const payload = await testRealHeartbeat();
       captureAutopilotMessage(payload, null);
       markActionMessage("good", `OK: heartbeat ${fmt(payload?.heartbeat_age_s, "s")}`);
-      const statusPayload = await fetchJson("/api/real/connection/status");
+      const statusPayload = await getRealRadioStatus();
       setRadioStatus((prev) => ({ ...prev, ...(statusPayload || {}) }));
       captureAutopilotMessage(statusPayload, null);
     } catch (err) {
       captureAutopilotMessage(null, err);
       markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
     } finally {
+      await refreshLastCommandDebug();
       setActionBusy(false);
     }
-  }, [captureAutopilotMessage, markActionMessage]);
+  }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug]);
 
   return (
     <main className="app app-shell real-test-app real-console">
@@ -690,42 +728,42 @@ export function RealTest() {
             <button
               className="real-arm-btn"
               disabled={!status.connected || actionBusy || status.armed}
-              onClick={() => runControlAction("/api/real/control/arm", "ARM", "Arm the vehicle now?")}
+              onClick={() => runControlAction(armRealDrone, "ARM", "Arm the vehicle now?")}
             >
               Arm
             </button>
             <button
               className="real-disconnect-btn"
               disabled={!status.connected || actionBusy || !status.armed}
-              onClick={() => runControlAction("/api/real/control/disarm", "DISARM", "Disarm the vehicle now?")}
+              onClick={() => runControlAction(disarmRealDrone, "DISARM", "Disarm the vehicle now?")}
             >
               Disarm
             </button>
             <button
               className="real-hold-btn"
               disabled={!status.connected || actionBusy}
-              onClick={() => runControlAction("/api/real/control/hold", "HOLD", "Set vehicle to HOLD (LOITER) now?")}
+              onClick={() => runControlAction(holdRealDrone, "HOLD", "Set vehicle to HOLD (LOITER) now?")}
             >
               Hold
             </button>
             <button
               className="real-rtl-btn"
               disabled={!status.connected || actionBusy}
-              onClick={() => runControlAction("/api/real/control/rtl", "RTL", "Return to launch now?")}
+              onClick={() => runControlAction(rtlRealDrone, "RTL", "Return to launch now?")}
             >
               RTL
             </button>
             <button
               className="real-land-btn"
               disabled={!status.connected || actionBusy}
-              onClick={() => runControlAction("/api/real/control/land", "LAND", "Send LAND now?")}
+              onClick={() => runControlAction(landRealDrone, "LAND", "Send LAND now?")}
             >
               Land
             </button>
             <button
               className="real-landhere-btn"
               disabled={!status.connected || actionBusy}
-              onClick={() => runControlAction("/api/real/control/land_here", "LAND HERE", "Command immediate LAND at current position?")}
+              onClick={() => runControlAction(landHereRealDrone, "LAND HERE", "Command immediate LAND at current position?")}
             >
               Land Here
             </button>
@@ -739,21 +777,21 @@ export function RealTest() {
             <button
               className="real-test-btn"
               disabled={!status.connected || actionBusy || status.armed || compassCalActive}
-              onClick={() => runControlAction("/api/real/control/compass_calibrate/start", "COMPASS CAL START", "Start compass calibration now? Keep vehicle disarmed and rotate slowly across all axes.")}
+              onClick={() => runControlAction(startCompassCalibration, "COMPASS CAL START", "Start compass calibration now? Keep vehicle disarmed and rotate slowly across all axes.")}
             >
               Compass Cal Start
             </button>
             <button
               className="real-test-btn"
               disabled={!status.connected || actionBusy || status.armed || compassCalActive}
-              onClick={() => runControlAction("/api/real/control/level_calibrate", "LEVEL CAL", "Run level calibration now? Place the vehicle on a stable level surface and keep it disarmed.")}
+              onClick={() => runControlAction(levelCalibrate, "LEVEL CAL", "Run level calibration now? Place the vehicle on a stable level surface and keep it disarmed.")}
             >
               Level Cal
             </button>
             <button
               className="real-disconnect-btn"
               disabled={!status.connected || actionBusy || !compassCalActive}
-              onClick={() => runControlAction("/api/real/control/compass_calibrate/cancel", "COMPASS CAL CANCEL", "Cancel compass calibration now?")}
+              onClick={() => runControlAction(cancelCompassCalibration, "COMPASS CAL CANCEL", "Cancel compass calibration now?")}
             >
               Compass Cal Cancel
             </button>
@@ -793,6 +831,50 @@ export function RealTest() {
                 ))}
               </div>
             </details>
+          ) : null}
+        </section>
+
+        <section className="panel real-panel real-widget">
+          <div className="panel-header">
+            <div>
+              <h2>Last Command / Autopilot Response</h2>
+              <p className="hint">Command path diagnostics from backend to autopilot ACK.</p>
+            </div>
+          </div>
+          <div className="status-pill-grid real-pill-grid compact-pill-grid">
+            <div className={`status-pill tone-${commandTone}`}>
+              <span>Result</span>
+              <strong>{commandResult.toUpperCase()}</strong>
+            </div>
+            <div className="status-pill tone-neutral">
+              <span>Last Command</span>
+              <strong>{String(lastCommandDebug?.action || "--").toUpperCase()}</strong>
+            </div>
+            <div className="status-pill tone-neutral">
+              <span>COMMAND_ACK</span>
+              <strong>{commandAckLabel}</strong>
+            </div>
+            <div className="status-pill tone-neutral">
+              <span>Mission State</span>
+              <strong>{String(lastCommandDebug?.mission_state?.state || missionState?.state || "--").toUpperCase()}</strong>
+            </div>
+            <div className="status-pill tone-neutral">
+              <span>Timestamp</span>
+              <strong>{fmtUnixTs(lastCommandDebug?.sent_at_unix)}</strong>
+            </div>
+          </div>
+          <p className="hint">Endpoint: {String(lastCommandDebug?.endpoint || "--")}</p>
+          {lastCommandDebug?.error ? <p className="hint bad">Error: {String(lastCommandDebug.error)}</p> : null}
+          <p className="hint">Last status text: {String(lastCommandDebug?.last_status_text || "--")}</p>
+          {commandBlockingReasons.length ? (
+            <div className="real-check-group critical">
+              <h3>Blocking reasons</h3>
+              {commandBlockingReasons.map((reason, idx) => (
+                <article key={`${idx}-${reason}`} className="real-check bad compact">
+                  <p>{reason}</p>
+                </article>
+              ))}
+            </div>
           ) : null}
         </section>
 

@@ -80,6 +80,14 @@ python -m scripts.ardupilot_scan_gate --dry-run 1 --conn udp:127.0.0.1:14550 --m
 
 Extended command cookbook (Linux/Windows/SITL/Desktop): `IMPORTANT_COMMANDS.txt`.
 
+Frontend route audit helper:
+
+```bash
+python -m scripts.audit_frontend_routes
+# or
+python scripts/audit_frontend_routes.py
+```
+
 ## System Architecture
 
 ```mermaid
