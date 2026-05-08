@@ -30,6 +30,17 @@ class MavlinkService:
     TAKEOFF_RISE_TIMEOUT_S = 20.0
     TAKEOFF_MIN_RISE_M = 0.8
     LEVEL_CAL_ACK_TIMEOUT_S = 6.0
+    IMPORTANT_DEBUG_MSG_TYPES = (
+        "HEARTBEAT",
+        "SYS_STATUS",
+        "BATTERY_STATUS",
+        "GPS_RAW_INT",
+        "GLOBAL_POSITION_INT",
+        "ATTITUDE",
+        "EKF_STATUS_REPORT",
+        "STATUSTEXT",
+        "COMMAND_ACK",
+    )
 
     @staticmethod
     def _new_compass_heading_alignment() -> dict[str, Any]:
@@ -98,6 +109,9 @@ class MavlinkService:
         self._status_text_log: deque[dict[str, Any]] = deque(maxlen=12)
         self._command_ack_log: deque[dict[str, Any]] = deque(maxlen=40)
         self._battery_msg_log: deque[dict[str, Any]] = deque(maxlen=5)
+        self._msg_total_count: int = 0
+        self._msg_counts: dict[str, int] = {}
+        self._msg_last_seen_unix: dict[str, float] = {}
 
     @staticmethod
     def _new_compass_calibration_status() -> dict[str, Any]:
@@ -427,6 +441,30 @@ class MavlinkService:
             if n >= len(self._battery_msg_log):
                 return [dict(item) for item in self._battery_msg_log]
             return [dict(item) for item in list(self._battery_msg_log)[-n:]]
+
+    def get_message_debug(self) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            total = int(self._msg_total_count)
+            counts = {str(k): int(v) for k, v in self._msg_counts.items()}
+            last_seen = {str(k): float(v) for k, v in self._msg_last_seen_unix.items()}
+
+        all_types = set(self.IMPORTANT_DEBUG_MSG_TYPES)
+        all_types.update(counts.keys())
+        all_types.update(last_seen.keys())
+        age_s: dict[str, float | None] = {}
+        for msg_type in sorted(all_types):
+            ts = last_seen.get(msg_type)
+            age_s[msg_type] = (max(0.0, now - float(ts)) if ts is not None else None)
+            counts.setdefault(msg_type, 0)
+            last_seen.setdefault(msg_type, None)
+
+        return {
+            "total_messages": total,
+            "message_counts": counts,
+            "message_last_seen_unix": last_seen,
+            "message_age_s": age_s,
+        }
 
     def set_compass_north_reference(self, *, north_heading_deg: float = 0.0) -> dict[str, Any]:
         st = self.get_status()
@@ -989,6 +1027,9 @@ class MavlinkService:
             self._status["compass_calibration"] = self._new_compass_calibration_status()
             self._command_ack_log.clear()
             self._battery_msg_log.clear()
+            self._msg_total_count = 0
+            self._msg_counts.clear()
+            self._msg_last_seen_unix.clear()
         return True
 
     def _request_data_streams(self, master: Any) -> None:
@@ -1043,6 +1084,10 @@ class MavlinkService:
     def _handle_msg(self, msg: Any) -> None:
         msg_type = msg.get_type()
         now = time.time()
+        with self._lock:
+            self._msg_total_count += 1
+            self._msg_counts[msg_type] = int(self._msg_counts.get(msg_type, 0)) + 1
+            self._msg_last_seen_unix[msg_type] = now
 
         if msg_type == "HEARTBEAT":
             if not self._is_autopilot_heartbeat(msg):

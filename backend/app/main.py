@@ -1344,6 +1344,12 @@ def create_app() -> FastAPI:
     @app.get("/api/real/debug/battery")
     def real_debug_battery() -> dict[str, object]:
         tele = real_radio.telemetry()
+        message_debug = real_radio.get_message_debug()
+        message_counts = message_debug.get("message_counts") if isinstance(message_debug.get("message_counts"), dict) else {}
+        message_age_s = message_debug.get("message_age_s") if isinstance(message_debug.get("message_age_s"), dict) else {}
+
+        sys_status_count = int(message_counts.get("SYS_STATUS") or 0)
+        battery_status_count = int(message_counts.get("BATTERY_STATUS") or 0)
         battery_payload = {
             "battery_voltage_v": tele.get("battery_voltage_v"),
             "battery_current_a": tele.get("battery_current_a"),
@@ -1359,10 +1365,20 @@ def create_app() -> FastAPI:
             (item for item in checks if isinstance(item, dict) and str(item.get("key")) == "battery_ok"),
             None,
         )
+        battery_message_status = {
+            "sys_status_seen": bool(sys_status_count > 0),
+            "battery_status_seen": bool(battery_status_count > 0),
+            "sys_status_count": sys_status_count,
+            "battery_status_count": battery_status_count,
+            "sys_status_age_s": message_age_s.get("SYS_STATUS"),
+            "battery_status_age_s": message_age_s.get("BATTERY_STATUS"),
+        }
         return {
             "telemetry_battery": battery_payload,
             "raw_recent_battery_messages": real_radio.get_recent_battery_messages(limit=5),
             "readiness_battery_check": readiness_battery_check,
+            "message_debug": message_debug,
+            "battery_message_status": battery_message_status,
         }
 
     @app.post("/api/real/control/arm")

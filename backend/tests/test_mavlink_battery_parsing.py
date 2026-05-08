@@ -93,3 +93,29 @@ def test_handle_msg_updates_battery_telemetry_and_debug_log() -> None:
     assert len(recent) == 2
     assert recent[0]["source"] == "SYS_STATUS"
     assert recent[1]["source"] == "BATTERY_STATUS"
+
+
+def test_message_debug_counts_sys_and_battery_status() -> None:
+    svc = _build_service()
+    svc._handle_msg(_Msg("SYS_STATUS", voltage_battery=22100, current_battery=120, battery_remaining=77))
+    svc._handle_msg(
+        _Msg(
+            "BATTERY_STATUS",
+            voltages=[3700, 3700, 3700, 3700, 3700, 3700, 65535, 65535, 65535, 65535],
+            current_battery=210,
+            battery_remaining=76,
+            current_consumed=100,
+        )
+    )
+
+    dbg = svc.get_message_debug()
+    assert int(dbg["total_messages"]) >= 2
+    counts = dbg["message_counts"]
+    assert counts["SYS_STATUS"] >= 1
+    assert counts["BATTERY_STATUS"] >= 1
+    assert "message_last_seen_unix" in dbg
+    assert dbg["message_last_seen_unix"]["SYS_STATUS"] is not None
+    assert dbg["message_last_seen_unix"]["BATTERY_STATUS"] is not None
+    assert "message_age_s" in dbg
+    assert dbg["message_age_s"]["SYS_STATUS"] is not None
+    assert dbg["message_age_s"]["BATTERY_STATUS"] is not None

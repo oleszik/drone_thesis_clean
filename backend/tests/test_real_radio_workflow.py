@@ -51,3 +51,28 @@ def test_real_readiness_includes_radio_checks() -> None:
     assert "radio_connected" in keys
     assert "radio_heartbeat_fresh" in keys
     assert "radio_telemetry_fresh" in keys
+
+
+def test_real_debug_battery_includes_message_rate_status() -> None:
+    resp = client.get("/api/real/debug/battery")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "message_debug" in payload
+    assert "battery_message_status" in payload
+
+    message_debug = payload["message_debug"]
+    assert "total_messages" in message_debug
+    assert "message_counts" in message_debug
+    assert "message_last_seen_unix" in message_debug
+    assert "message_age_s" in message_debug
+
+    battery_message_status = payload["battery_message_status"]
+    for key in (
+        "sys_status_seen",
+        "battery_status_seen",
+        "sys_status_count",
+        "battery_status_count",
+        "sys_status_age_s",
+        "battery_status_age_s",
+    ):
+        assert key in battery_message_status
