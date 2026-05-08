@@ -83,6 +83,12 @@ class MavlinkService:
             "roll_deg": None,
             "pitch_deg": None,
             "battery_percent": None,
+            "battery_voltage_v": None,
+            "battery_current_a": None,
+            "battery_remaining_percent": None,
+            "battery_consumed_mah": None,
+            "battery_source": "",
+            "battery_updated_at_unix": None,
             "gps_fix": None,
             "satellites": None,
             "ekf_ok": None,
@@ -91,6 +97,7 @@ class MavlinkService:
         self._track: deque[dict[str, Any]] = deque(maxlen=max(100, int(settings.track_max_points)))
         self._status_text_log: deque[dict[str, Any]] = deque(maxlen=12)
         self._command_ack_log: deque[dict[str, Any]] = deque(maxlen=40)
+        self._battery_msg_log: deque[dict[str, Any]] = deque(maxlen=5)
 
     @staticmethod
     def _new_compass_calibration_status() -> dict[str, Any]:
@@ -138,6 +145,60 @@ class MavlinkService:
             return None
         if not math.isfinite(out):
             return None
+        return out
+
+    @staticmethod
+    def _parse_sys_status_battery(msg: Any, *, now_unix: float | None = None) -> dict[str, Any]:
+        now = float(now_unix if now_unix is not None else time.time())
+        out: dict[str, Any] = {
+            "battery_source": "SYS_STATUS",
+            "battery_updated_at_unix": now,
+        }
+        voltage_mv = MavlinkService._safe_int(getattr(msg, "voltage_battery", None))
+        if voltage_mv is not None and 0 < voltage_mv < 65535:
+            out["battery_voltage_v"] = float(voltage_mv) / 1000.0
+        current_ca = MavlinkService._safe_int(getattr(msg, "current_battery", None))
+        if current_ca is not None and int(current_ca) != -1:
+            out["battery_current_a"] = float(current_ca) / 100.0
+        remaining_pct = MavlinkService._safe_float(getattr(msg, "battery_remaining", None))
+        if remaining_pct is not None and remaining_pct >= 0.0:
+            out["battery_percent"] = float(remaining_pct)
+            out["battery_remaining_percent"] = float(remaining_pct)
+            out["battery_low"] = bool(float(remaining_pct) < 20.0)
+        return out
+
+    @staticmethod
+    def _parse_battery_status_battery(msg: Any, *, now_unix: float | None = None) -> dict[str, Any]:
+        now = float(now_unix if now_unix is not None else time.time())
+        out: dict[str, Any] = {
+            "battery_source": "BATTERY_STATUS",
+            "battery_updated_at_unix": now,
+        }
+        raw_voltages = getattr(msg, "voltages", None)
+        valid_voltages_mv: list[float] = []
+        if isinstance(raw_voltages, (list, tuple)):
+            for value in raw_voltages:
+                v_mv = MavlinkService._safe_int(value)
+                if v_mv is None:
+                    continue
+                if 0 < v_mv < 65535:
+                    valid_voltages_mv.append(float(v_mv))
+        if valid_voltages_mv:
+            out["battery_voltage_v"] = sum(valid_voltages_mv) / 1000.0
+
+        current_ca = MavlinkService._safe_int(getattr(msg, "current_battery", None))
+        if current_ca is not None and int(current_ca) != -1:
+            out["battery_current_a"] = float(current_ca) / 100.0
+
+        remaining_pct = MavlinkService._safe_float(getattr(msg, "battery_remaining", None))
+        if remaining_pct is not None and remaining_pct >= 0.0:
+            out["battery_percent"] = float(remaining_pct)
+            out["battery_remaining_percent"] = float(remaining_pct)
+            out["battery_low"] = bool(float(remaining_pct) < 20.0)
+
+        consumed_mah = MavlinkService._safe_float(getattr(msg, "current_consumed", None))
+        if consumed_mah is not None and consumed_mah >= 0.0:
+            out["battery_consumed_mah"] = float(consumed_mah)
         return out
 
     @staticmethod
@@ -359,6 +420,13 @@ class MavlinkService:
             if n >= len(self._status_text_log):
                 return [dict(item) for item in self._status_text_log]
             return [dict(item) for item in list(self._status_text_log)[-n:]]
+
+    def get_recent_battery_messages(self, limit: int = 5) -> list[dict[str, Any]]:
+        n = max(1, min(int(limit), self._battery_msg_log.maxlen))
+        with self._lock:
+            if n >= len(self._battery_msg_log):
+                return [dict(item) for item in self._battery_msg_log]
+            return [dict(item) for item in list(self._battery_msg_log)[-n:]]
 
     def set_compass_north_reference(self, *, north_heading_deg: float = 0.0) -> dict[str, Any]:
         st = self.get_status()
@@ -829,6 +897,7 @@ class MavlinkService:
             self._master = None
             self._status["connected"] = False
             self._command_ack_log.clear()
+            self._battery_msg_log.clear()
             cur = self._status.get("compass_calibration")
             if isinstance(cur, dict):
                 state = str(cur.get("state") or "").strip().lower()
@@ -919,6 +988,7 @@ class MavlinkService:
             self._status["last_error"] = ""
             self._status["compass_calibration"] = self._new_compass_calibration_status()
             self._command_ack_log.clear()
+            self._battery_msg_log.clear()
         return True
 
     def _request_data_streams(self, master: Any) -> None:
@@ -957,6 +1027,9 @@ class MavlinkService:
         _msg_interval(mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10.0)
         _msg_interval(mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, 10.0)
         _msg_interval(mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS, 2.0)
+        bat_status_msg_id = getattr(mavutil.mavlink, "MAVLINK_MSG_ID_BATTERY_STATUS", None)
+        if isinstance(bat_status_msg_id, int):
+            _msg_interval(bat_status_msg_id, 2.0)
         _msg_interval(mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT, 2.0)
         _msg_interval(mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT, 2.0)
 
@@ -1144,14 +1217,37 @@ class MavlinkService:
             return
 
         if msg_type == "SYS_STATUS":
-            battery = float(msg.battery_remaining)
-            battery_low: bool | None = None
-            if battery >= 0:
-                battery_low = bool(battery < 20.0)
+            parsed = self._parse_sys_status_battery(msg, now_unix=now)
+            battery_low = parsed.get("battery_low")
             with self._lock:
-                self._telemetry["battery_percent"] = battery if battery >= 0 else None
+                self._telemetry.update(parsed)
                 self._telemetry["updated_at_unix"] = now
-                self._status["failsafes"]["battery_low"] = battery_low
+                if battery_low is not None:
+                    self._status["failsafes"]["battery_low"] = bool(battery_low)
+                self._battery_msg_log.append(
+                    {
+                        "t_unix": now,
+                        "source": "SYS_STATUS",
+                        **{k: v for k, v in parsed.items() if k.startswith("battery_")},
+                    }
+                )
+            return
+
+        if msg_type == "BATTERY_STATUS":
+            parsed = self._parse_battery_status_battery(msg, now_unix=now)
+            battery_low = parsed.get("battery_low")
+            with self._lock:
+                self._telemetry.update(parsed)
+                self._telemetry["updated_at_unix"] = now
+                if battery_low is not None:
+                    self._status["failsafes"]["battery_low"] = bool(battery_low)
+                self._battery_msg_log.append(
+                    {
+                        "t_unix": now,
+                        "source": "BATTERY_STATUS",
+                        **{k: v for k, v in parsed.items() if k.startswith("battery_")},
+                    }
+                )
             return
 
         if msg_type == "GPS_RAW_INT":

@@ -98,27 +98,45 @@ class ReadinessService:
             }
         )
 
-        battery_pct = _safe_float(telemetry.get("battery_percent"))
+        battery_pct = _safe_float(telemetry.get("battery_remaining_percent"))
+        if battery_pct is None:
+            battery_pct = _safe_float(telemetry.get("battery_percent"))
+        battery_voltage_v = _safe_float(telemetry.get("battery_voltage_v"))
+        battery_current_a = _safe_float(telemetry.get("battery_current_a"))
+        battery_consumed_mah = _safe_float(telemetry.get("battery_consumed_mah"))
+        battery_source = str(telemetry.get("battery_source") or "")
         battery_low_flag = failsafes.get("battery_low") if "battery_low" in failsafes else None
         battery_low = bool(battery_low_flag) if battery_low_flag is not None else None
         battery_msg = ""
         battery_reason = ""
-        battery_severity = "critical"
+        battery_severity = "warning"
         # Keep explicit low-battery as critical, but do not hard-block when the FC does not publish battery percent.
         if battery_low is True:
             battery_ok = False
             battery_reason = "battery failsafe low"
-            battery_msg = f"battery low (pct={battery_pct})"
+            battery_msg = f"battery low (pct={battery_pct}, voltage_v={battery_voltage_v})"
             battery_severity = "critical"
         elif battery_pct is not None:
             battery_ok = battery_pct >= 25.0
             battery_reason = "ok" if battery_ok else "battery percent below threshold"
             battery_msg = (
-                f"battery healthy (pct={battery_pct}, fc_low={battery_low})"
+                f"battery healthy (pct={battery_pct}, voltage_v={battery_voltage_v}, fc_low={battery_low})"
                 if battery_ok
-                else f"battery not ready (pct={battery_pct}, fc_low={battery_low})"
+                else f"battery not ready (pct={battery_pct}, voltage_v={battery_voltage_v}, fc_low={battery_low})"
             )
             battery_severity = "critical"
+        elif battery_voltage_v is not None:
+            battery_ok = True
+            if battery_voltage_v <= 21.0:
+                battery_reason = "battery voltage is critically low for typical 6S; verify immediately"
+                battery_msg = f"battery voltage critical warning (voltage_v={battery_voltage_v:.2f})"
+            elif battery_voltage_v <= 21.6:
+                battery_reason = "battery voltage is low for typical 6S"
+                battery_msg = f"battery voltage low warning (voltage_v={battery_voltage_v:.2f})"
+            else:
+                battery_reason = "battery percent unavailable; using voltage display only"
+                battery_msg = f"battery voltage available (voltage_v={battery_voltage_v:.2f})"
+            battery_severity = "warning"
         else:
             battery_ok = True
             battery_reason = "battery telemetry unavailable"
@@ -132,6 +150,11 @@ class ReadinessService:
                 "message": battery_msg,
                 "value": {
                     "battery_percent": battery_pct,
+                    "battery_remaining_percent": battery_pct,
+                    "battery_voltage_v": battery_voltage_v,
+                    "battery_current_a": battery_current_a,
+                    "battery_consumed_mah": battery_consumed_mah,
+                    "battery_source": battery_source,
                     "battery_low": battery_low,
                     "reason": battery_reason,
                 },

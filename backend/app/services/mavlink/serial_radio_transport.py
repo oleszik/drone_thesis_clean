@@ -168,6 +168,9 @@ class RealRadioService:
     def get_status_text_log(self, limit: int = 12) -> list[dict[str, Any]]:
         return self._mav.get_status_text_log(limit=limit)
 
+    def get_recent_battery_messages(self, limit: int = 5) -> list[dict[str, Any]]:
+        return self._mav.get_recent_battery_messages(limit=limit)
+
     def arm(self) -> dict[str, Any]:
         return self._mav.arm()
 

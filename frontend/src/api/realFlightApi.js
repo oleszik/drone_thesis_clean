@@ -124,6 +124,13 @@ export function startRealMission({ alt_m, accept_radius_m }) {
   });
 }
 
+export function validateRealMissionStart({ alt_m, accept_radius_m }) {
+  return postReal("/api/real/mission/validate_start", {
+    alt_m: Number(alt_m),
+    accept_radius_m: Number(accept_radius_m),
+  });
+}
+
 export function stopRealMission() {
   return postReal("/api/real/mission/stop");
 }
@@ -160,4 +167,8 @@ export function getRealLastCommandDebug() {
 
 export function getRealCommandAckLog(limit = 40) {
   return fetchReal(`/api/real/debug/command_ack_log?limit=${Math.max(1, Number(limit) || 40)}`);
+}
+
+export function getRealBatteryDebug() {
+  return fetchReal("/api/real/debug/battery");
 }

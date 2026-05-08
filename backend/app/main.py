@@ -1,5 +1,6 @@
 from __future__ import annotations
 from collections import deque
+from datetime import datetime, timezone
 import logging
 import math
 import ssl
@@ -120,6 +121,9 @@ def _model_to_dict(model: BaseModel) -> dict[str, object]:
     if hasattr(model, "model_dump"):
         return model.model_dump()
     return model.dict()
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def create_app() -> FastAPI:
@@ -249,6 +253,12 @@ def create_app() -> FastAPI:
 
     def _meters_between_lat(lat1: float, lat2: float) -> float:
         return abs(float(lat2) - float(lat1)) * 111320.0
+
+    def _distance_between_lng_lat_m(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
+        d_lat = (float(lat2) - float(lat1)) * 111320.0
+        avg_lat = 0.5 * (float(lat1) + float(lat2))
+        d_lng = (float(lng2) - float(lng1)) * 111320.0 * max(0.1, abs(math.cos(math.radians(avg_lat))))
+        return float(math.hypot(d_lat, d_lng))
 
     def _operating_fence() -> dict[str, object]:
         return get_operating_fence(cfg)
@@ -1331,6 +1341,30 @@ def create_app() -> FastAPI:
             "recent_status_text": list(mav_status.get("recent_status_text") or []),
         }
 
+    @app.get("/api/real/debug/battery")
+    def real_debug_battery() -> dict[str, object]:
+        tele = real_radio.telemetry()
+        battery_payload = {
+            "battery_voltage_v": tele.get("battery_voltage_v"),
+            "battery_current_a": tele.get("battery_current_a"),
+            "battery_percent": tele.get("battery_percent"),
+            "battery_remaining_percent": tele.get("battery_remaining_percent"),
+            "battery_consumed_mah": tele.get("battery_consumed_mah"),
+            "battery_source": tele.get("battery_source"),
+            "battery_updated_at_unix": tele.get("battery_updated_at_unix"),
+        }
+        readiness_snapshot = real_readiness_state()
+        checks = readiness_snapshot.get("checks") if isinstance(readiness_snapshot.get("checks"), list) else []
+        readiness_battery_check = next(
+            (item for item in checks if isinstance(item, dict) and str(item.get("key")) == "battery_ok"),
+            None,
+        )
+        return {
+            "telemetry_battery": battery_payload,
+            "raw_recent_battery_messages": real_radio.get_recent_battery_messages(limit=5),
+            "readiness_battery_check": readiness_battery_check,
+        }
+
     @app.post("/api/real/control/arm")
     def real_control_arm() -> dict[str, object]:
         out = _run_real_action_with_debug(
@@ -1561,6 +1595,118 @@ def create_app() -> FastAPI:
     @app.get("/api/real/mission/path")
     def real_mission_path() -> dict[str, object]:
         return mission_path()
+
+    @app.post("/api/real/mission/validate_start")
+    def real_mission_validate_start(req: SitlStartRequest) -> dict[str, object]:
+        sent_at_unix = time.time()
+        readiness_snapshot = real_readiness_state()
+        mission_payload = mission.get_path()
+        fence_ok, fence_msg, _fence_details = validate_mission_payload_inside_fence(mission_payload, _operating_fence())
+        radio_state = real_radio.status()
+        mav_status = radio_state.get("mav_status") if isinstance(radio_state.get("mav_status"), dict) else {}
+        executor_state = real_executor.get_state()
+
+        def _to_lng_lat(value: object) -> list[float] | None:
+            if not isinstance(value, (list, tuple)) or len(value) < 2:
+                return None
+            try:
+                lng = float(value[0])
+                lat = float(value[1])
+            except Exception:
+                return None
+            if not math.isfinite(lng) or not math.isfinite(lat):
+                return None
+            return [lng, lat]
+
+        waypoints_raw = mission_payload.get("waypoints_lng_lat")
+        waypoints: list[list[float]] = []
+        if isinstance(waypoints_raw, list):
+            for item in waypoints_raw:
+                parsed = _to_lng_lat(item)
+                if parsed is not None:
+                    waypoints.append(parsed)
+
+        start_position = _to_lng_lat(mission_payload.get("start_position_lng_lat"))
+        first_waypoint = waypoints[0] if waypoints else None
+        target_start = start_position or first_waypoint
+
+        distance_to_start_m = None
+        tele = real_radio.telemetry()
+        live_lng = tele.get("lon")
+        live_lat = tele.get("lat")
+        try:
+            if target_start is not None and live_lng is not None and live_lat is not None:
+                distance_to_start_m = _distance_between_lng_lat_m(
+                    float(live_lng),
+                    float(live_lat),
+                    float(target_start[0]),
+                    float(target_start[1]),
+                )
+        except Exception:
+            distance_to_start_m = None
+
+        blockers: list[str] = []
+        if not bool(readiness_snapshot.get("can_autonomous")):
+            blockers.extend([str(x) for x in (readiness_snapshot.get("blocking_reasons") or []) if str(x).strip()])
+            if not blockers:
+                blockers.append("autonomy readiness is not satisfied")
+        if len(waypoints) < 1:
+            blockers.append("mission path has no valid waypoints")
+        if not fence_ok:
+            blockers.append(str(fence_msg))
+        if bool(executor_state.get("scan_active")):
+            blockers.append("mission executor is already active")
+        state_now = str(executor_state.get("state") or "").upper()
+        if state_now in {"ARMING", "TAKEOFF", "RUN_PATH"}:
+            blockers.append(f"mission executor is busy (state={state_now})")
+
+        deduped_blockers: list[str] = []
+        for reason in blockers:
+            if reason not in deduped_blockers:
+                deduped_blockers.append(reason)
+
+        can_start = len(deduped_blockers) == 0
+        mission_summary = {
+            "waypoint_count": len(waypoints),
+            "has_scan_area": bool(isinstance(mission_payload.get("scan_area_polygon_lng_lat"), list) and len(mission_payload.get("scan_area_polygon_lng_lat") or []) >= 3),
+            "start_position": start_position,
+            "first_waypoint": first_waypoint,
+            "distance_to_start_m": distance_to_start_m,
+            "altitude_m": float(req.alt_m),
+            "accept_radius_m": float(req.accept_radius_m),
+            "fence_ok": bool(fence_ok),
+        }
+        out = {
+            "ok": bool(can_start),
+            "action": "validate_start",
+            "can_start": bool(can_start),
+            "blocking_reasons": deduped_blockers,
+            "readiness_snapshot": readiness_snapshot,
+            "mission_summary": mission_summary,
+            "last_status_text": str(mav_status.get("last_status_text") or ""),
+            "timestamp": _utc_now_iso(),
+        }
+        _record_real_command_debug(
+            action="validate_start",
+            endpoint="/api/real/mission/validate_start",
+            sent_at_unix=sent_at_unix,
+            ok=bool(can_start),
+            result="accepted" if can_start else "blocked",
+            payload=out,
+            error="" if can_start else "; ".join(deduped_blockers),
+            http_status=200 if can_start else 409,
+            blocking_reasons=deduped_blockers,
+            readiness_snapshot=readiness_snapshot,
+        )
+        if not can_start:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    **out,
+                    "error": "validation_failed",
+                },
+            )
+        return out
 
     @app.post("/api/real/mission/start")
     def real_mission_start(req: SitlStartRequest) -> dict[str, object]:

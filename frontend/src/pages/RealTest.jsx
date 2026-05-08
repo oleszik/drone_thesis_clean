@@ -24,6 +24,7 @@ import {
   startRealMission,
   stopRealMission,
   testRealHeartbeat,
+  validateRealMissionStart,
 } from "../api/realFlightApi";
 
 function getErrorMessage(err) {
@@ -99,7 +100,16 @@ export function RealTest() {
     last_status_text: "",
     recent_status_text: [],
   });
-  const [telemetry, setTelemetry] = useState({ battery_percent: null, updated_at_unix: null });
+  const [telemetry, setTelemetry] = useState({
+    battery_percent: null,
+    battery_remaining_percent: null,
+    battery_voltage_v: null,
+    battery_current_a: null,
+    battery_consumed_mah: null,
+    battery_source: "",
+    battery_updated_at_unix: null,
+    updated_at_unix: null,
+  });
   const [missionState, setMissionState] = useState({
     state: "IDLE",
     scan_active: false,
@@ -293,6 +303,14 @@ export function RealTest() {
   }, [radioStatus.connected]);
 
   const missionTone = toneFromMissionState(missionState.state);
+  const radioPortOptions = useMemo(() => {
+    const ports = Array.isArray(radioPorts) ? [...radioPorts] : [];
+    const currentPort = String(radioStatus?.serial_port || "").trim();
+    if (currentPort && !ports.some((p) => String(p?.port || "") === currentPort)) {
+      ports.unshift({ port: currentPort, description: "current" });
+    }
+    return ports;
+  }, [radioPorts, radioStatus?.serial_port]);
 
   const recentFcMessages = useMemo(() => {
     const fromStatus = Array.isArray(status?.recent_status_text) ? status.recent_status_text : [];
@@ -321,11 +339,49 @@ export function RealTest() {
   }, [checksByKey]);
 
   const batteryPercent = useMemo(() => {
-    const fromCheck = Number(batteryCheckValue?.battery_percent);
+    const fromCheck = Number(batteryCheckValue?.battery_remaining_percent);
     if (Number.isFinite(fromCheck)) return fromCheck;
+    const fromCheckLegacy = Number(batteryCheckValue?.battery_percent);
+    if (Number.isFinite(fromCheckLegacy)) return fromCheckLegacy;
+    const fromTelemetryPreferred = Number(telemetry.battery_remaining_percent);
+    if (Number.isFinite(fromTelemetryPreferred)) return fromTelemetryPreferred;
     const fromTelemetry = Number(telemetry.battery_percent);
     return Number.isFinite(fromTelemetry) ? fromTelemetry : null;
-  }, [batteryCheckValue, telemetry.battery_percent]);
+  }, [batteryCheckValue, telemetry.battery_percent, telemetry.battery_remaining_percent]);
+
+  const batteryVoltageV = useMemo(() => {
+    const fromCheck = Number(batteryCheckValue?.battery_voltage_v);
+    if (Number.isFinite(fromCheck)) return fromCheck;
+    const fromTelemetry = Number(telemetry.battery_voltage_v);
+    return Number.isFinite(fromTelemetry) ? fromTelemetry : null;
+  }, [batteryCheckValue, telemetry.battery_voltage_v]);
+
+  const batteryCurrentA = useMemo(() => {
+    const fromCheck = Number(batteryCheckValue?.battery_current_a);
+    if (Number.isFinite(fromCheck)) return fromCheck;
+    const fromTelemetry = Number(telemetry.battery_current_a);
+    return Number.isFinite(fromTelemetry) ? fromTelemetry : null;
+  }, [batteryCheckValue, telemetry.battery_current_a]);
+
+  const batterySource = useMemo(() => {
+    const fromCheck = String(batteryCheckValue?.battery_source || "").trim();
+    if (fromCheck) return fromCheck;
+    return String(telemetry.battery_source || "").trim();
+  }, [batteryCheckValue, telemetry.battery_source]);
+
+  const batteryValueLabel = useMemo(() => {
+    const parts = [];
+    if (batteryVoltageV !== null) parts.push(`${batteryVoltageV.toFixed(1)} V`);
+    if (batteryPercent !== null) parts.push(`${batteryPercent.toFixed(0)}%`);
+    return parts.length ? parts.join(" / ") : "--";
+  }, [batteryPercent, batteryVoltageV]);
+
+  const batteryMetaLabel = useMemo(() => {
+    const parts = [];
+    if (batteryCurrentA !== null) parts.push(`${batteryCurrentA.toFixed(1)} A`);
+    if (batterySource) parts.push(batterySource);
+    return parts.join(" · ");
+  }, [batteryCurrentA, batterySource]);
 
   const liveCards = useMemo(() => {
     const hb = checksByKey.heartbeat_age_sec?.value;
@@ -342,7 +398,8 @@ export function RealTest() {
       { label: "Yaw Aligned", value: alignedYawLabel, tone: Number.isFinite(alignedYawDeg) ? "good" : "warn" },
       {
         label: "Battery",
-        value: fmt(batteryPercent, "%"),
+        value: batteryValueLabel,
+        meta: batteryMetaLabel,
         tone: checksByKey.battery_ok?.ok ? "good" : "bad",
       },
       { label: "RC Link", value: checksByKey.rc_link_ok?.ok ? "OK" : "UNKNOWN", tone: checksByKey.rc_link_ok?.ok ? "good" : "warn" },
@@ -354,7 +411,7 @@ export function RealTest() {
         tone: checksByKey.heartbeat_age_sec?.ok ? "good" : "bad",
       },
     ];
-  }, [batteryPercent, checksByKey, status.armed, status.mode, telemetry.yaw_aligned_deg, telemetry.yaw_deg]);
+  }, [batteryMetaLabel, batteryValueLabel, checksByKey, status.armed, status.mode, telemetry.yaw_aligned_deg, telemetry.yaw_deg]);
 
   const primaryLiveCards = useMemo(() => {
     const priority = new Set(["Mode", "Armed", "Yaw Raw", "Yaw Aligned", "Battery", "GPS", "EKF", "Heartbeat"]);
@@ -535,6 +592,35 @@ export function RealTest() {
     }
   }, [captureAutopilotMessage, markActionMessage, refreshLastCommandDebug, telemetry.lat, telemetry.lon]);
 
+  const runValidateMissionStart = useCallback(async () => {
+    setActionBusy(true);
+    markActionMessage("warn", "Validating mission start...");
+    try {
+      const payload = await validateRealMissionStart({
+        alt_m: Number(planningState.startAltitudeM || 10),
+        accept_radius_m: 3.0,
+      });
+      captureAutopilotMessage(payload, null);
+      if (payload?.can_start) {
+        markActionMessage("good", "Mission start validation passed — ready to start if props area is clear.");
+      } else {
+        const reasons = Array.isArray(payload?.blocking_reasons) ? payload.blocking_reasons : [];
+        markActionMessage("bad", reasons.length ? `Validation blocked: ${reasons.join(" | ")}` : "Validation failed");
+      }
+    } catch (err) {
+      captureAutopilotMessage(null, err);
+      const reasons = Array.isArray(err?.detail?.blocking_reasons) ? err.detail.blocking_reasons : [];
+      if (reasons.length) {
+        markActionMessage("bad", `Validation blocked: ${reasons.join(" | ")}`);
+      } else {
+        markActionMessage("bad", `Error: ${getErrorMessage(err)}`);
+      }
+    } finally {
+      await refreshLastCommandDebug();
+      setActionBusy(false);
+    }
+  }, [captureAutopilotMessage, markActionMessage, planningState.startAltitudeM, refreshLastCommandDebug]);
+
   const runStartMission = useCallback(async () => {
     if (!window.confirm("Start the generated mission on the real drone now?")) return;
     setActionBusy(true);
@@ -675,17 +761,17 @@ export function RealTest() {
           <div className="real-radio-grid">
             <label className="real-field">
               <span>Serial Port</span>
-              <input
-                list="real-radio-port-list"
+              <select
                 value={serialPort}
                 onChange={(e) => setSerialPort(e.target.value)}
-                placeholder="e.g. COM5"
-              />
-              <datalist id="real-radio-port-list">
-                {radioPorts.map((p) => (
-                  <option key={p.port} value={p.port}>{p.description ? `${p.port} - ${p.description}` : p.port}</option>
+              >
+                <option value="">Select serial port</option>
+                {radioPortOptions.map((p) => (
+                  <option key={p.port} value={p.port}>
+                    {p.description ? `${p.port} - ${p.description}` : p.port}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </label>
             <label className="real-field">
               <span>Baud</span>
@@ -696,10 +782,11 @@ export function RealTest() {
               </select>
             </label>
           </div>
-          {!serialPort && radioPorts.length > 0 && !pickSuggestedSerialPort(radioPorts) ? (
-            <p className="hint">No USB/ACM radio port auto-detected; enter device path manually (for example /dev/ttyUSB0).</p>
+          {!serialPort && radioPorts.length > 0 ? (
+            <p className="hint">Choose a detected serial port before connecting.</p>
           ) : null}
-          {portsError ? <p className="hint bad">Port scan: {portsError} (you can still type COM port manually)</p> : null}
+          {radioPorts.length === 0 && !portsError ? <p className="hint bad">No serial ports detected yet. Plug in radio, then wait for refresh.</p> : null}
+          {portsError ? <p className="hint bad">Port scan: {portsError}</p> : null}
           <div className="real-radio-actions real-action-row cols-3">
             <button className="real-connect-btn" disabled={actionBusy || !serialPort} onClick={connectRadio}>Connect</button>
             <button className="real-disconnect-btn" disabled={actionBusy || !radioStatus.connected} onClick={disconnectRadio}>Disconnect</button>
@@ -866,6 +953,7 @@ export function RealTest() {
           <p className="hint">Endpoint: {String(lastCommandDebug?.endpoint || "--")}</p>
           {lastCommandDebug?.error ? <p className="hint bad">Error: {String(lastCommandDebug.error)}</p> : null}
           <p className="hint">Last status text: {String(lastCommandDebug?.last_status_text || "--")}</p>
+          <p className="hint">Battery telemetry: {batteryValueLabel}{batteryMetaLabel ? ` (${batteryMetaLabel})` : ""}</p>
           {commandBlockingReasons.length ? (
             <div className="real-check-group critical">
               <h3>Blocking reasons</h3>
@@ -911,6 +999,13 @@ export function RealTest() {
             </div>
           </div>
           <div className="real-preset-row">
+            <button
+              className="real-test-btn"
+              disabled={actionBusy}
+              onClick={runValidateMissionStart}
+            >
+              Validate Mission Start
+            </button>
             <button
               className="real-connect-btn"
               disabled={actionBusy || !readiness.can_autonomous || !planningState.validForMissionAction || !status.connected}
@@ -979,6 +1074,7 @@ export function RealTest() {
               <div key={item.label} className={`status-pill tone-${item.tone}`}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
+                {item.meta ? <small>{item.meta}</small> : null}
               </div>
             ))}
           </div>
@@ -989,6 +1085,7 @@ export function RealTest() {
                 <div key={item.label} className={`status-pill tone-${item.tone}`}>
                   <span>{item.label}</span>
                   <strong>{item.value}</strong>
+                  {item.meta ? <small>{item.meta}</small> : null}
                 </div>
               ))}
             </div>
